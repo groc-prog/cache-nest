@@ -1,18 +1,52 @@
 {
+  "globalEnv": [
+    "CI",
+    "BASE_URL"
+  ],
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
   "tasks": {
+    "transit": {
+      "dependsOn": [
+        "^transit"
+      ]
+    },
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": [
+        "transit"
+      ]
+    },
+    "type-check": {
+      "dependsOn": [
+        "transit"
+      ]
+    },
+    "test:unit": {
+      "dependsOn": [
+        "^test:unit"
+      ]
+    },
+    "test:e2e": {
+      "dependsOn": [
+        "^test:e2e"
+      ]
     },
     "dev": {
       "cache": false,
       "persistent": true
-    }
+    },
+    "//#format": {}
   }
 }
