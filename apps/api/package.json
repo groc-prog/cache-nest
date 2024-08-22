@@ -1,0 +1,26 @@
+{
+  "name": "@cache-nest/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --loader=ts-node/esm --watch src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --format=esm",
+    "preview": "npm run build && node dist/index.js",
+    "test:unit": "vitest --config vitest.unit.config.ts",
+    "test:e2e": "vitest --config vitest.e2e.config.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
+  },
+  "devDependencies": {
+    "@cache-nest/eslint-config": "workspace:*",
+    "@cache-nest/typescript-config": "workspace:*",
+    "@types/node": "^20.16.1",
+    "@vitest/coverage-v8": "^2.0.5",
+    "esbuild": "^0.23.1",
+    "eslint": "^8.57.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.4.5",
+    "vitest": "^2.0.5"
+  }
+}

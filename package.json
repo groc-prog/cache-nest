@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "preview": "turbo preview",
     "test:unit": "turbo test:unit",
     "test:e2e": "turbo test:e2e",
     "lint": "turbo lint",
@@ -18,7 +19,8 @@
     "husky": "^9.1.5",
     "prettier": "^3.2.5",
     "turbo": "^2.0.14",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^2.0.5"
   },
   "packageManager": "pnpm@8.15.6",
   "engines": {

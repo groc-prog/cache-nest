@@ -1,0 +1,11 @@
+{
+  "extends": "@cache-nest/typescript-config/node.json",
+  "include": ["vitest*.config.*", ".eslintrc.*", "src/**/*.ts", "test/**/*.ts", "e2e/**/*.ts"],
+  "exclude": [],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
