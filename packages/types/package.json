@@ -1,0 +1,17 @@
+{
+  "name": "@cache-nest/types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix"
+  },
+  "devDependencies": {
+    "@cache-nest/eslint-config": "workspace:*",
+    "@cache-nest/typescript-config": "workspace:*",
+    "@types/node": "^20.16.1",
+    "eslint": "^8.57.0",
+    "typescript": "~5.4.5"
+  }
+}

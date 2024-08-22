@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@cache-nest/typescript-config/base.json",
+  "include": [".eslintrc.*", "src/**/*.ts"],
+  "exclude": [],
+  "compilerOptions": {}
+}
