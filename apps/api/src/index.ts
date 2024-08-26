@@ -1,1 +1,3 @@
-console.log('HELLO WORLD');
+import { EvictionPolicy } from '@cache-nest/types';
+
+console.log(EvictionPolicy.LFU);
