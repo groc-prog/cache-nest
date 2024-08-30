@@ -1,18 +1,4 @@
-import type { OTLPMetricExporter as OTLPMetricExporterGrpc } from '@opentelemetry/exporter-metrics-otlp-grpc';
-import type { OTLPMetricExporter as OTLPMetricExporterHttp } from '@opentelemetry/exporter-metrics-otlp-http';
-import type { OTLPMetricExporter as OTLPMetricExporterProto } from '@opentelemetry/exporter-metrics-otlp-proto';
-import type { OTLPTraceExporter as OTLPTraceExporterGrpc } from '@opentelemetry/exporter-trace-otlp-grpc';
-import type { OTLPTraceExporter as OTLPTraceExporterHttp } from '@opentelemetry/exporter-trace-otlp-http';
-import type { OTLPTraceExporter as OTLPTraceExporterProto } from '@opentelemetry/exporter-trace-otlp-proto';
 import type { CorsOptions } from 'cors';
-
-export type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends (infer U)[]
-    ? DeepPartial<U>[] | undefined
-    : T[P] extends object
-      ? DeepPartial<T[P]>
-      : T[P];
-};
 
 type NumberOrPercentage = number | `${number}%`;
 
@@ -45,7 +31,9 @@ export interface ApiConfiguration {
      * Cors options.
      * @see {@link https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/cors/index.d.ts}
      */
-    cors: Omit<CorsOptions, 'origin'> & { origin: Exclude<CorsOptions['origin'], (...args: any[]) => any> };
+    cors: {
+      origin?: Exclude<CorsOptions['origin'], (...args: any[]) => any>;
+    };
     authentication: {
       /**
        * Whether to enable authentication by checking incoming request for valid API keys.
@@ -115,13 +103,6 @@ export interface ApiConfiguration {
      * @default OpenTelemetryExporter.CONSOLE
      */
     exporter: OpenTelemetryExporter;
-    /**
-     * Additional options for the exporter.
-     */
-    options:
-      | NonNullable<ConstructorParameters<typeof OTLPTraceExporterGrpc>[0]>
-      | NonNullable<ConstructorParameters<typeof OTLPTraceExporterHttp>[0]>
-      | NonNullable<ConstructorParameters<typeof OTLPTraceExporterProto>[0]>;
   };
   metrics: {
     /**
@@ -139,13 +120,6 @@ export interface ApiConfiguration {
      * @default 10000
      */
     interval: number;
-    /**
-     * Additional options for the exporter.
-     */
-    options:
-      | NonNullable<ConstructorParameters<typeof OTLPMetricExporterGrpc>[0]>
-      | NonNullable<ConstructorParameters<typeof OTLPMetricExporterHttp>[0]>
-      | NonNullable<ConstructorParameters<typeof OTLPMetricExporterProto>[0]>;
   };
   webUi: {
     /**
