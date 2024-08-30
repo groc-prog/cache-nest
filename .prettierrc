@@ -7,8 +7,8 @@
   "importOrderSeparation": true,
   "importOrder": [
     "^@cache-nest/(.*)$",
-    "^(./|../)(.*)$",
-    "^@/(.*)$"
+    "^@/(.*)$",
+    "^(./|../)(.*)$"
   ],
   "plugins": [
     "@trivago/prettier-plugin-sort-imports"

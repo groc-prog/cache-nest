@@ -11,6 +11,9 @@ module.exports = {
   parserOptions: {
     project,
   },
+  rules: {
+    'import/extensions': 'off',
+  },
   settings: {
     'import/resolver': { node: {} },
   },
