@@ -1,3 +1,3 @@
 import { getApiConfiguration } from './setup.js';
 
-getApiConfiguration();
+console.log(await getApiConfiguration());
