@@ -1,3 +1,3 @@
-import { EvictionPolicy } from '@cache-nest/types';
+import { getApiConfiguration } from './setup.js';
 
-console.log(EvictionPolicy.LFU);
+getApiConfiguration();

@@ -2,7 +2,10 @@
   "globalEnv": [
     "CI",
     "BASE_URL",
-    "LOG_LEVEL"
+    "LOG_LEVEL",
+    "NODE_ENV",
+    "CACHE_NEST_VERSION",
+    "HOSTNAME"
   ],
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
