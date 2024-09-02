@@ -9,7 +9,7 @@
       "request": "launch",
       "name": "api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["pnpm", "dev", "--filter", "@cache-nest/api"],
+      "runtimeArgs": ["pnpm", "dev", "--filter", "api"],
       "console": "internalConsole",
       "internalConsoleOptions": "openOnSessionStart",
       "skipFiles": ["<node_internals>/**"],
