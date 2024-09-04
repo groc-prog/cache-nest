@@ -13,7 +13,8 @@
     "**/Thumbs.db": true,
     "**/node_modules": true,
     "**/dist": true,
-    "**/.turbo": true
+    "**/.turbo": true,
+    "**/coverage": true
   },
   "typescript.tsdk": "node_modules/typescript/lib",
   "cSpell.words": ["Opentelemetry", "PROTOBUFF"]

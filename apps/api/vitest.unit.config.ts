@@ -1,12 +1,7 @@
-import { defineConfig, configDefaults } from 'vitest/config';
+import { defineProject, configDefaults } from 'vitest/config';
 
-export default defineConfig({
+export default defineProject({
   test: {
-    watch: false,
     exclude: [...configDefaults.exclude, 'e2e/**'],
-    root: '.',
-    coverage: {
-      provider: 'v8',
-    },
   },
 });

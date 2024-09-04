@@ -16,6 +16,7 @@
     "@commitlint/cli": "^19.4.0",
     "@commitlint/config-conventional": "^19.2.2",
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+    "@vitest/coverage-v8": "^2.0.5",
     "husky": "^9.1.5",
     "prettier": "^3.2.5",
     "turbo": "^2.0.14",
