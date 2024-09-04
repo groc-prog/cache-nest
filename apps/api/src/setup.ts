@@ -10,12 +10,7 @@ import { WinstonInstrumentation } from '@opentelemetry/instrumentation-winston';
 import { Resource } from '@opentelemetry/resources';
 import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import {
-  BatchSpanProcessor,
-  AlwaysOnSampler,
-  AlwaysOffSampler,
-  ConsoleSpanExporter,
-} from '@opentelemetry/sdk-trace-node';
+import { BatchSpanProcessor, AlwaysOnSampler, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, SEMRESATTRS_HOST_NAME } from '@opentelemetry/semantic-conventions';
 import { readFile, readJSON, readdir } from 'fs-extra';
 import jsYaml from 'js-yaml';
@@ -215,9 +210,9 @@ async function startSDK(
       [ATTR_SERVICE_VERSION]: process.env.CACHE_NEST_VERSION,
       [SEMRESATTRS_HOST_NAME]: os.hostname(),
     }),
-    traceExporter: traceExporter,
-    sampler: tracingConfig.enabled ? new AlwaysOnSampler() : new AlwaysOffSampler(),
-    spanProcessors: [new BatchSpanProcessor(traceExporter)],
+    traceExporter: tracingConfig.enabled ? traceExporter : undefined,
+    sampler: new AlwaysOnSampler(),
+    spanProcessors: tracingConfig.enabled ? [new BatchSpanProcessor(traceExporter)] : undefined,
     metricReader: metricsConfig.enabled
       ? new PeriodicExportingMetricReader({
           exporter: metricsExporter,
