@@ -164,7 +164,12 @@ async function startSDK(
   tracingConfig: ApiConfiguration['tracing'],
   metricsConfig: ApiConfiguration['metrics'],
 ): Promise<void> {
-  logger.info('Starting OpenTelemetry SKD setup');
+  if (!tracingConfig.enabled && !metricsConfig.enabled) {
+    logger.info('Tracing and metrics disabled, skipping OpenTelemetry initialization');
+    return;
+  }
+
+  logger.info('Initializing OpenTelemetry SKD');
   let traceExporter: OTLPTraceExporterGrpc | OTLPTraceExporterHttp | OTLPTraceExporterProto | ConsoleSpanExporter;
   let metricsExporter:
     | OTLPMetricExporterGrpc
@@ -212,7 +217,7 @@ async function startSDK(
     traceExporter: traceExporter,
     sampler: tracingConfig.enabled ? new AlwaysOnSampler() : new AlwaysOffSampler(),
     spanProcessors: [new BatchSpanProcessor(traceExporter)],
-    metricReader: metricsExporter
+    metricReader: metricsConfig.enabled
       ? new PeriodicExportingMetricReader({
           exporter: metricsExporter,
           exportIntervalMillis: metricsConfig.interval,
@@ -221,7 +226,7 @@ async function startSDK(
     instrumentations: [new HttpInstrumentation(), new FsInstrumentation(), new WinstonInstrumentation()],
   });
 
-  logger.info('Opentelemetry SDK setup complete');
+  logger.info('Opentelemetry SDK initialized');
   sdk.start();
 }
 
@@ -232,7 +237,7 @@ async function startSDK(
  * @returns {Promise<ApiConfiguration>} The validated and parsed API configuration.
  */
 export async function getApiConfiguration(): Promise<ApiConfiguration> {
-  logger.info('Starting API setup');
+  logger.info('Starting API initialization');
   let apiConfig = merge({}, API_CONFIG_DEFAULTS) as ApiConfiguration;
 
   try {
@@ -283,6 +288,6 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
 
   await startSDK(validated.data.tracing, validated.data.metrics);
 
-  logger.info('API setup complete');
+  logger.info('API initialized');
   return validated.data as ApiConfiguration;
 }
