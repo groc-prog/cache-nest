@@ -13,6 +13,7 @@ module.exports = {
   },
   rules: {
     'import/extensions': 'off',
+    'no-case-declarations': 'off',
   },
   settings: {
     'import/resolver': { node: {} },
