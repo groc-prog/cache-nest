@@ -17,7 +17,8 @@ import {
   ConsoleSpanExporter,
 } from '@opentelemetry/sdk-trace-node';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, SEMRESATTRS_HOST_NAME } from '@opentelemetry/semantic-conventions';
-import fse from 'fs-extra';
+import { readFile, readJSON, readdir } from 'fs-extra';
+import jsYaml from 'js-yaml';
 import { isNumber, merge } from 'lodash-es';
 import os from 'os';
 import path from 'path';
@@ -30,7 +31,7 @@ import logger from './utils/logger.js';
 
 const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
 const API_CONFIG_FILEPATH: Readonly<string> = process.env.NODE_ENV === 'development' ? '.' : '/etc';
-const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
+export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   server: {
     port: 3000,
     host: '0.0.0.0',
@@ -84,7 +85,7 @@ const NumberOrPercentageValidator = z.union([z.string(), z.number()]).superRefin
         maximum: os.totalmem(),
         type: 'number',
         inclusive: true,
-        message: 'maxSize must be less than the total memory',
+        message: 'maxSize must be less than the total memory/storage',
       });
   } else {
     const percentage = parseInt(value.replace('%', ''));
@@ -242,7 +243,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
 
   try {
     logger.debug(`Searching for configuration file ${API_CONFIG_FILENAME} as path ${API_CONFIG_FILEPATH}`);
-    const files = await fse.readdir(path.resolve(API_CONFIG_FILEPATH));
+    const files = await readdir(path.resolve(API_CONFIG_FILEPATH));
     const configFile = files.find((file) => path.parse(file).name === API_CONFIG_FILENAME);
 
     // If a config file is provided, we merge the options and validate the configuration as a whole.
@@ -255,11 +256,12 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
         case '.yml':
         case '.yaml ':
           logger.debug('Reading YAML configuration file');
-          apiConfig = merge({}, apiConfig, await fse.readFile(path.format(configFilePath), 'utf-8'));
+          const contents = await readFile(path.format(configFilePath), 'utf-8');
+          apiConfig = merge({}, apiConfig, jsYaml.load(contents));
           break;
         case '.json':
           logger.debug('Reading JSON configuration file');
-          apiConfig = merge({}, apiConfig, await fse.readJSON(path.format(configFilePath)));
+          apiConfig = merge({}, apiConfig, await readJSON(path.format(configFilePath)));
           break;
         default:
           logger.warn(
@@ -284,10 +286,10 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
     );
     logger.error(`Invalid API configuration: ${errorMessage}`);
     process.exit(0);
+  } else {
+    await startSDK(validated.data.tracing, validated.data.metrics);
+
+    logger.info('API initialized');
+    return validated.data as ApiConfiguration;
   }
-
-  await startSDK(validated.data.tracing, validated.data.metrics);
-
-  logger.info('API initialized');
-  return validated.data as ApiConfiguration;
 }
