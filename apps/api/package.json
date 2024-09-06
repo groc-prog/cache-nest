@@ -23,7 +23,6 @@
     "@opentelemetry/exporter-trace-otlp-proto": "^0.52.1",
     "@opentelemetry/instrumentation-fs": "^0.14.0",
     "@opentelemetry/instrumentation-http": "^0.52.1",
-    "@opentelemetry/instrumentation-winston": "^0.39.0",
     "@opentelemetry/resources": "^1.25.1",
     "@opentelemetry/sdk-metrics": "^1.25.1",
     "@opentelemetry/sdk-node": "^0.52.1",
@@ -46,6 +45,7 @@
   "devDependencies": {
     "@cache-nest/eslint-config": "workspace:*",
     "@cache-nest/typescript-config": "workspace:*",
+    "@types/basic-auth": "^1.1.8",
     "@types/cors": "^2.8.17",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",

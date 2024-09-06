@@ -1,3 +1,4 @@
+import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 import { OTLPMetricExporter as OTLPMetricExporterGrpc } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { OTLPMetricExporter as OTLPMetricExporterHttp } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPMetricExporter as OTLPMetricExporterProto } from '@opentelemetry/exporter-metrics-otlp-proto';
@@ -6,13 +7,13 @@ import { OTLPTraceExporter as OTLPTraceExporterHttp } from '@opentelemetry/expor
 import { OTLPTraceExporter as OTLPTraceExporterProto } from '@opentelemetry/exporter-trace-otlp-proto';
 import { FsInstrumentation } from '@opentelemetry/instrumentation-fs';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import { WinstonInstrumentation } from '@opentelemetry/instrumentation-winston';
 import { Resource } from '@opentelemetry/resources';
 import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { BatchSpanProcessor, AlwaysOnSampler, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, SEMRESATTRS_HOST_NAME } from '@opentelemetry/semantic-conventions';
-import { readFile, readJSON, readdir } from 'fs-extra';
+import { config } from 'dotenv';
+import fse from 'fs-extra';
 import jsYaml from 'js-yaml';
 import { isNumber, merge } from 'lodash-es';
 import os from 'os';
@@ -24,8 +25,15 @@ import { DeepReadonly } from '@cache-nest/types';
 import { ApiConfiguration, OpenTelemetryExporter } from './types/configuration.js';
 import logger from './utils/logger.js';
 
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+
+config({
+  path: ['.env'],
+});
+
 const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
 const API_CONFIG_FILEPATH: Readonly<string> = process.env.NODE_ENV === 'development' ? '.' : '/etc';
+export const API_SERVICE_NAME: Readonly<string> = 'cache-nest';
 export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   server: {
     port: 3000,
@@ -206,7 +214,7 @@ async function startSDK(
 
   const sdk = new NodeSDK({
     resource: new Resource({
-      [ATTR_SERVICE_NAME]: 'cache-nest',
+      [ATTR_SERVICE_NAME]: API_SERVICE_NAME,
       [ATTR_SERVICE_VERSION]: process.env.CACHE_NEST_VERSION,
       [SEMRESATTRS_HOST_NAME]: os.hostname(),
     }),
@@ -219,7 +227,7 @@ async function startSDK(
           exportIntervalMillis: metricsConfig.interval,
         })
       : undefined,
-    instrumentations: [new HttpInstrumentation(), new FsInstrumentation(), new WinstonInstrumentation()],
+    instrumentations: [new HttpInstrumentation(), new FsInstrumentation()],
   });
 
   logger.info('Opentelemetry SDK initialized');
@@ -229,6 +237,7 @@ async function startSDK(
 /**
  * Validates and parses the API configuration, if provided. If no config file is found, fallback to default values
  * is used. Once the API configuration is validated, the Opentelemetry SDK is started with the parsed configuration.
+ * If the validation fails, the process will exit with code 0.
  * @async
  * @returns {Promise<ApiConfiguration>} The validated and parsed API configuration.
  */
@@ -238,7 +247,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
 
   try {
     logger.debug(`Searching for configuration file ${API_CONFIG_FILENAME} as path ${API_CONFIG_FILEPATH}`);
-    const files = await readdir(path.resolve(API_CONFIG_FILEPATH));
+    const files = await fse.readdir(path.resolve(API_CONFIG_FILEPATH));
     const configFile = files.find((file) => path.parse(file).name === API_CONFIG_FILENAME);
 
     // If a config file is provided, we merge the options and validate the configuration as a whole.
@@ -251,12 +260,12 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
         case '.yml':
         case '.yaml ':
           logger.debug('Reading YAML configuration file');
-          const contents = await readFile(path.format(configFilePath), 'utf-8');
+          const contents = await fse.readFile(path.format(configFilePath), 'utf-8');
           apiConfig = merge({}, apiConfig, jsYaml.load(contents));
           break;
         case '.json':
           logger.debug('Reading JSON configuration file');
-          apiConfig = merge({}, apiConfig, await readJSON(path.format(configFilePath)));
+          apiConfig = merge({}, apiConfig, await fse.readJSON(path.format(configFilePath)));
           break;
         default:
           logger.warn(
