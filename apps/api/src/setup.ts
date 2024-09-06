@@ -1,4 +1,3 @@
-import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 import { OTLPMetricExporter as OTLPMetricExporterGrpc } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { OTLPMetricExporter as OTLPMetricExporterHttp } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPMetricExporter as OTLPMetricExporterProto } from '@opentelemetry/exporter-metrics-otlp-proto';
@@ -24,8 +23,6 @@ import { DeepReadonly } from '@cache-nest/types';
 
 import { ApiConfiguration, OpenTelemetryExporter } from './types/configuration.js';
 import logger from './utils/logger.js';
-
-diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 config({
   path: ['.env'],
@@ -149,11 +146,13 @@ const ApiConfigurationValidator = z.object({
   tracing: z.object({
     enabled: z.boolean(),
     exporter: z.nativeEnum(OpenTelemetryExporter),
+    url: z.string().optional(),
   }),
   metrics: z.object({
     enabled: z.boolean(),
     exporter: z.nativeEnum(OpenTelemetryExporter),
     interval: z.number().positive(),
+    url: z.string().optional(),
   }),
   webUi: z.object({
     enabled: z.boolean(),
@@ -184,13 +183,19 @@ async function startSDK(
   logger.debug('Deciding on exporters');
   switch (tracingConfig.exporter) {
     case OpenTelemetryExporter.HTTP:
-      traceExporter = new OTLPTraceExporterHttp();
+      traceExporter = new OTLPTraceExporterHttp({
+        url: tracingConfig.url,
+      });
       break;
     case OpenTelemetryExporter.PROTOBUFF:
-      traceExporter = new OTLPTraceExporterProto();
+      traceExporter = new OTLPTraceExporterProto({
+        url: tracingConfig.url,
+      });
       break;
     case OpenTelemetryExporter.GRPC:
-      traceExporter = new OTLPTraceExporterGrpc();
+      traceExporter = new OTLPTraceExporterGrpc({
+        url: tracingConfig.url,
+      });
       break;
     default:
       traceExporter = new ConsoleSpanExporter();
@@ -199,13 +204,19 @@ async function startSDK(
 
   switch (metricsConfig.exporter) {
     case OpenTelemetryExporter.HTTP:
-      metricsExporter = new OTLPMetricExporterHttp();
+      metricsExporter = new OTLPMetricExporterHttp({
+        url: metricsConfig.url,
+      });
       break;
     case OpenTelemetryExporter.PROTOBUFF:
-      metricsExporter = new OTLPMetricExporterProto();
+      metricsExporter = new OTLPMetricExporterProto({
+        url: metricsConfig.url,
+      });
       break;
     case OpenTelemetryExporter.GRPC:
-      metricsExporter = new OTLPMetricExporterGrpc();
+      metricsExporter = new OTLPMetricExporterGrpc({
+        url: metricsConfig.url,
+      });
       break;
     default:
       metricsExporter = new ConsoleMetricExporter();

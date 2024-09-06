@@ -103,6 +103,10 @@ export interface ApiConfiguration {
      * @default OpenTelemetryExporter.CONSOLE
      */
     exporter: OpenTelemetryExporter;
+    /**
+     * The URL the traces are exported to.
+     */
+    url?: string;
   };
   metrics: {
     /**
@@ -120,6 +124,10 @@ export interface ApiConfiguration {
      * @default 10000
      */
     interval: number;
+    /**
+     * The URL the traces are exported to.
+     */
+    url?: string;
   };
   webUi: {
     /**

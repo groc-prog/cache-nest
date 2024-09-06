@@ -9,9 +9,10 @@ const configuration = await getApiConfiguration();
 const server = new Server();
 
 server.get('/', (_, res) => {
-  tracer.startActiveSpan('testSpan', () => {
+  tracer.startActiveSpan('testSpan', (span) => {
     logger.info('with trace');
     res.json({ msg: 'Hello World' });
+    span.end();
   });
 });
 
