@@ -1,5 +1,6 @@
 import { Server } from 'hyper-express';
 
+import { logging } from './middleware/logging.js';
 import { getApiConfiguration } from './setup.js';
 import logger from './utils/logger.js';
 import { tracer } from './utils/opentelemetry.js';
@@ -7,6 +8,8 @@ import { tracer } from './utils/opentelemetry.js';
 const configuration = await getApiConfiguration();
 
 const server = new Server();
+
+server.use(logging);
 
 server.get('/', (_, res) => {
   tracer.startActiveSpan('testSpan', (span) => {
@@ -17,7 +20,7 @@ server.get('/', (_, res) => {
 });
 
 server.get('/without', (_, res) => {
-  logger.info('without trace');
+  logger.info({ foo: 1, bar: 2 });
   res.json({ msg: 'Hello World' });
 });
 
