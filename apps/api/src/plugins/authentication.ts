@@ -14,7 +14,7 @@ export const authenticationPlugin = (app: ElysiaApp): ElysiaApp =>
   app.onBeforeHandle(({ headers, error, configuration }) => {
     if (!configuration.server.authentication.enabled) return;
 
-    tracer.startActiveSpan('checkAuthentication', (span) => {
+    tracer.startActiveSpan('plugin/authentication', (span) => {
       const authHeader = headers.authorization?.split(' ');
       if (!authHeader) {
         span.end();
