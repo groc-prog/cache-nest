@@ -4,10 +4,9 @@ import { swagger } from '@elysiajs/swagger';
 import { env } from 'bun';
 import { Elysia } from 'elysia';
 
+import healthCheckRoutes from '@/routes/health-check';
 import { getApiConfiguration } from '@/setup';
 import logger from '@/utils/logger';
-
-import { authenticationPlugin } from './plugins/authentication';
 
 // This might be a pretty hacky way of getting the types to work, but i currently don't
 // see a way around it for getting plugins to have the correct typing
@@ -49,7 +48,7 @@ if (apiConfiguration.server.enableSwagger)
     }),
   );
 
-server.use(authenticationPlugin).listen(
+server.use(healthCheckRoutes).listen(
   {
     port: apiConfiguration.server.port,
     hostname: apiConfiguration.server.host,
