@@ -31,7 +31,9 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   server: {
     port: 3000,
     host: '0.0.0.0',
-    cors: {},
+    cors: {
+      origin: '*',
+    },
     authentication: {
       enabled: false,
       apiKeys: [],
@@ -119,7 +121,7 @@ const ApiConfigurationValidator = z.object({
     port: z.number(),
     host: z.string(),
     cors: z.object({
-      origin: z.union([z.undefined(), z.boolean(), z.string(), z.array(z.boolean()), z.array(z.string())]),
+      origin: z.union([z.boolean(), z.string(), z.array(z.boolean()), z.array(z.string())]),
     }),
     authentication: z.object({
       enabled: z.boolean(),

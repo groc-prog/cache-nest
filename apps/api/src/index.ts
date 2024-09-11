@@ -17,8 +17,6 @@ export type ElysiaApp = typeof elysiaServer;
 const apiConfiguration = await getApiConfiguration();
 
 globalLogger.debug('Setting up server plugins and routes');
-// Add global state here so it can be inferred by all plugins/routes/etc using the
-// `ElysiaApp` type
 const elysiaServer = new Elysia()
   .decorate('configuration', apiConfiguration)
   .decorate('logger', globalLogger)
@@ -83,6 +81,7 @@ if (apiConfiguration.server.enableSwagger)
             url: 'https://opensource.org/licenses/MIT',
           },
         },
+        tags: [{ name: 'Server', description: 'General information about the state and configuration of the server.' }],
       },
     }),
   );

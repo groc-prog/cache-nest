@@ -32,7 +32,11 @@ export interface ApiConfiguration {
      * @see {@link https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/cors/index.d.ts}
      */
     cors: {
-      origin?: NonNullable<Parameters<typeof cors>[0]>['origin'];
+      /**
+       * Allowed CORS origins.
+       * @default '*'
+       */
+      origin: NonNullable<Parameters<typeof cors>[0]>['origin'];
     };
     authentication: {
       /**
@@ -85,8 +89,8 @@ export interface ApiConfiguration {
     };
     fileSystem: {
       /**
-       * The maximum amount of memory the driver is allowed to use. Can be provided as the number of bytes or
-       * a percentage value based on the total memory available.
+       * The maximum amount of disk space the driver is allowed to use. Can be provided as the number of bytes or
+       * a percentage value based on the total disk space available.
        * @default '20%'
        */
       maxSize: NumberOrPercentage;
