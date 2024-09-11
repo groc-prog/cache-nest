@@ -6,32 +6,28 @@ import { Elysia } from 'elysia';
 
 import { getApiConfiguration } from '@/setup';
 import logger from '@/utils/logger';
-import { tracer } from '@/utils/opentelemetry';
 
-const configuration = await getApiConfiguration();
+import { authenticationPlugin } from './plugins/authentication';
+
+// This might be a pretty hacky way of getting the types to work, but i currently don't
+// see a way around it for getting plugins to have the correct typing
+export type ElysiaApp = typeof server;
+
+const apiConfiguration = await getApiConfiguration();
 
 logger.info('Starting server');
 const server = new Elysia()
+  .decorate('logger', logger)
+  .decorate('configuration', apiConfiguration)
   .use(
     cors({
-      origin: configuration.server.cors.origin,
+      origin: apiConfiguration.server.cors.origin,
       methods: ['POST', 'GET', 'DELETE'],
     }),
-  )
-  .get('/', async () => {
-    await tracer.startActiveSpan('test', async (span) => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1000);
-      });
+  );
 
-      span.end();
-    });
-
-    return { msg: 'Hello Elysia' };
-  });
-
-if (configuration.tracing.enabled) server.use(opentelemetry());
-if (configuration.server.enableSwagger)
+if (apiConfiguration.tracing.enabled) server.use(opentelemetry());
+if (apiConfiguration.server.enableSwagger)
   server.use(
     swagger({
       documentation: {
@@ -39,15 +35,24 @@ if (configuration.server.enableSwagger)
           title: 'Cache-Nest API',
           description: 'Complete development API documentation for Cache-Nest',
           version: env.VERSION || 'Development',
+          contact: {
+            name: 'Marc Troisner',
+            email: 'marc.troisner@gmail.com',
+            url: 'https://github.com/groc-prog/cache-nest',
+          },
+          license: {
+            name: 'MIT License',
+            url: 'https://opensource.org/licenses/MIT',
+          },
         },
       },
     }),
   );
 
-server.listen(
+server.use(authenticationPlugin).listen(
   {
-    port: configuration.server.port,
-    hostname: configuration.server.host,
+    port: apiConfiguration.server.port,
+    hostname: apiConfiguration.server.host,
   },
   (bunServer) => {
     logger.info(`Server started on ${bunServer.hostname}:${bunServer.port}`);

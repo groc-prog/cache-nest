@@ -1,5 +1,10 @@
 server:
   enableSwagger: true
+  authentication:
+    enabled: true
+    apiKeys:
+      - foo
+      - bar
 tracing:
   enabled: true
   exporter: grpc
