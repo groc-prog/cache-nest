@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "bun --hot run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --format esm",
-    "preview": "npm run build && node dist/index.js",
+    "preview": "NODE_ENV=production npm run build && bun dist/index.js",
     "test:unit": "vitest --config vitest.unit.config.ts",
     "test:e2e": "vitest --config vitest.e2e.config.ts",
     "type-check": "tsc --noEmit",
@@ -34,6 +34,7 @@
     "check-disk-space": "^3.4.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "elysia": "^1.1.12",
     "fs-extra": "^11.2.0",
     "js-yaml": "^4.1.0",
     "lodash-es": "^4.17.21",
