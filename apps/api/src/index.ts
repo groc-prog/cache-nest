@@ -1,16 +1,24 @@
+import { cors } from '@elysiajs/cors';
 import { opentelemetry } from '@elysiajs/opentelemetry';
+import { swagger } from '@elysiajs/swagger';
 import { Elysia } from 'elysia';
 
 import { getApiConfiguration } from '@/setup';
 import logger from '@/utils/logger';
-
-import { tracer } from './utils/opentelemetry';
+import { tracer } from '@/utils/opentelemetry';
 
 const configuration = await getApiConfiguration();
 
 logger.info('Starting server');
 new Elysia()
+  .use(
+    cors({
+      origin: configuration.server.cors.origin,
+      methods: ['POST', 'GET', 'DELETE'],
+    }),
+  )
   .use(opentelemetry())
+  .use(swagger())
   .get('/', async () => {
     await tracer.startActiveSpan('test', async (span) => {
       await new Promise((resolve) => {

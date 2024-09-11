@@ -1,4 +1,4 @@
-import type { CorsOptions } from 'cors';
+import type { cors } from '@elysiajs/cors';
 
 type NumberOrPercentage = number | `${number}%`;
 
@@ -32,7 +32,7 @@ export interface ApiConfiguration {
      * @see {@link https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/cors/index.d.ts}
      */
     cors: {
-      origin?: Exclude<CorsOptions['origin'], (...args: any[]) => any>;
+      origin?: NonNullable<Parameters<typeof cors>[0]>['origin'];
     };
     authentication: {
       /**

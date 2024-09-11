@@ -13,7 +13,7 @@ import os from 'os';
 import path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenTelemetryExporter } from '../src/types/configuration.js';
+import { OpenTelemetryExporter } from '../src/types/configuration';
 
 vi.mock('@opentelemetry/sdk-node', async (importOriginal) => {
   const original = await importOriginal<typeof import('@opentelemetry/sdk-node')>();

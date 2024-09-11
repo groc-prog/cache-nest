@@ -11,7 +11,7 @@ import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelem
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { BatchSpanProcessor, AlwaysOnSampler, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, SEMRESATTRS_HOST_NAME } from '@opentelemetry/semantic-conventions';
-import { config } from 'dotenv';
+import { env } from 'bun';
 import fse from 'fs-extra';
 import jsYaml from 'js-yaml';
 import { isNumber, merge } from 'lodash-es';
@@ -19,17 +19,13 @@ import os from 'os';
 import path from 'path';
 import { z } from 'zod';
 
-import { DeepReadonly } from '@cache-nest/types';
+import type { DeepReadonly } from '@cache-nest/types';
 
-import { ApiConfiguration, OpenTelemetryExporter } from './types/configuration.js';
-import logger from './utils/logger.js';
-
-config({
-  path: ['.env'],
-});
+import { type ApiConfiguration, OpenTelemetryExporter } from '@/types/configuration';
+import logger from '@/utils/logger';
 
 const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
-const API_CONFIG_FILEPATH: Readonly<string> = process.env.NODE_ENV === 'development' ? '.' : '/etc';
+const API_CONFIG_FILEPATH: Readonly<string> = env.NODE_ENV !== 'production' ? '.' : '/etc';
 export const API_SERVICE_NAME: Readonly<string> = 'cache-nest';
 export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   server: {
@@ -226,7 +222,7 @@ async function startSDK(
   const sdk = new NodeSDK({
     resource: new Resource({
       [ATTR_SERVICE_NAME]: API_SERVICE_NAME,
-      [ATTR_SERVICE_VERSION]: process.env.CACHE_NEST_VERSION,
+      [ATTR_SERVICE_VERSION]: env.CACHE_NEST_VERSION,
       [SEMRESATTRS_HOST_NAME]: os.hostname(),
     }),
     traceExporter: tracingConfig.enabled ? traceExporter : undefined,

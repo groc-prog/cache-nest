@@ -1,4 +1,5 @@
 import { trace } from '@opentelemetry/api';
+import { env } from 'bun';
 import { format, transports, createLogger } from 'winston';
 
 const traceFormat = format((info) => {
@@ -13,7 +14,7 @@ const traceFormat = format((info) => {
 });
 
 const logger = createLogger({
-  level: process.env.LOG_LEVEL || 'http',
+  level: env.LOG_LEVEL || 'http',
   format: format.combine(
     traceFormat(),
     format.json(),
