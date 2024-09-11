@@ -1,8 +1,8 @@
 tracing:
   enabled: true
-  exporter: "http"
-  url: "http://localhost:4318/v1/traces"
+  exporter: grpc
+  url: http://localhost:4317/v1/traces
 metrics:
   enabled: true
-  exporter: "http"
-  url: "http://localhost:4318/v1/metrics"
+  exporter: grpc
+  url: http://localhost:4317/v1/metrics
