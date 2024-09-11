@@ -46,6 +46,7 @@
     "@cache-nest/eslint-config": "workspace:*",
     "@cache-nest/typescript-config": "workspace:*",
     "@types/basic-auth": "^1.1.8",
+    "@types/bun": "^1.1.9",
     "@types/cors": "^2.8.17",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",

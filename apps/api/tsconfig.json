@@ -2,5 +2,11 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "@cache-nest/typescript-config/node.json",
   "include": ["vitest*.config.*", ".eslintrc.*", "src/**/*.ts", "test/**/*.ts", "e2e/**/*.ts"],
-  "exclude": []
+  "exclude": [],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
 }
