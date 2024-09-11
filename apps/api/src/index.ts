@@ -1,35 +1,72 @@
 import { cors } from '@elysiajs/cors';
 import { opentelemetry } from '@elysiajs/opentelemetry';
 import { swagger } from '@elysiajs/swagger';
+import { trace } from '@opentelemetry/api';
 import { env } from 'bun';
 import { Elysia } from 'elysia';
+import { merge } from 'lodash-es';
 
-import { loggingPlugin } from '@/plugins/logger';
 import serverRoutes from '@/routes/server';
 import { getApiConfiguration } from '@/setup';
-import logger from '@/utils/logger';
+import globalLogger from '@/utils/logger';
 
 // This might be a pretty hacky way of getting the types to work, but i currently don't
 // see a way around it for getting plugins to have the correct typing
-export type ElysiaApp = typeof server;
+export type ElysiaApp = typeof elysiaServer;
 
 const apiConfiguration = await getApiConfiguration();
 
-logger.debug('Setting up server plugins and routes');
+globalLogger.debug('Setting up server plugins and routes');
 // Add global state here so it can be inferred by all plugins/routes/etc using the
 // `ElysiaApp` type
-const server = new Elysia().decorate('configuration', apiConfiguration).decorate('logger', logger);
+const elysiaServer = new Elysia()
+  .decorate('configuration', apiConfiguration)
+  .decorate('logger', globalLogger)
+  .derive(() => ({
+    startTime: process.hrtime(),
+  }))
+  .onError(({ error, code }) => {
+    const spanContext = trace.getActiveSpan()?.spanContext();
 
-server.use(loggingPlugin).use(
-  cors({
-    origin: apiConfiguration.server.cors.origin,
-    methods: ['POST', 'GET', 'DELETE'],
-  }),
-);
+    return {
+      name: error.name,
+      message: error.message,
+      code,
+      stack: env.NODE_ENV === 'development' ? error.stack : undefined,
+      traceId: spanContext ? spanContext.traceId : undefined,
+      spanId: spanContext ? spanContext.spanId : undefined,
+    };
+  })
+  .onAfterResponse(async ({ logger, startTime, request, set, headers, server, path }) => {
+    const durationHrTime = process.hrtime(startTime);
+    const duration = durationHrTime[0] * 1e3 + durationHrTime[1] / 1e6;
 
-if (apiConfiguration.tracing.enabled) server.use(opentelemetry());
+    let payload = {
+      method: request.method,
+      url: request.url,
+      status: set.status,
+      handlerDurationMs: duration.toFixed(4),
+    };
+
+    if (env.NODE_ENV !== 'development')
+      payload = merge({}, payload, {
+        referrer: request.referrer,
+        ip: server?.requestIP(request),
+        userAgent: headers['user-agent'],
+      });
+
+    logger.http(`${request.method} ${path}`, payload);
+  })
+  .use(
+    cors({
+      origin: apiConfiguration.server.cors.origin,
+      methods: ['POST', 'GET', 'DELETE'],
+    }),
+  );
+
+if (apiConfiguration.tracing.enabled) elysiaServer.use(opentelemetry());
 if (apiConfiguration.server.enableSwagger)
-  server.use(
+  elysiaServer.use(
     swagger({
       documentation: {
         info: {
@@ -50,7 +87,7 @@ if (apiConfiguration.server.enableSwagger)
     }),
   );
 
-server
+elysiaServer
   .group('/api', (app) => app.use(serverRoutes))
   .listen(
     {
@@ -58,6 +95,6 @@ server
       hostname: apiConfiguration.server.host,
     },
     (bunServer) => {
-      logger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
+      globalLogger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
     },
   );
