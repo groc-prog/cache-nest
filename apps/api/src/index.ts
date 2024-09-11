@@ -50,12 +50,14 @@ if (apiConfiguration.server.enableSwagger)
     }),
   );
 
-server.use(healthCheckRoutes).listen(
-  {
-    port: apiConfiguration.server.port,
-    hostname: apiConfiguration.server.host,
-  },
-  (bunServer) => {
-    logger.info(`Server started on ${bunServer.hostname}:${bunServer.port}`);
-  },
-);
+server
+  .group('/api', (app) => app.use(healthCheckRoutes))
+  .listen(
+    {
+      port: apiConfiguration.server.port,
+      hostname: apiConfiguration.server.host,
+    },
+    (bunServer) => {
+      logger.info(`Server started on ${bunServer.hostname}:${bunServer.port}`);
+    },
+  );
