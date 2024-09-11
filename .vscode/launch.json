@@ -5,16 +5,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "type": "node",
+      "type": "bun",
       "request": "launch",
       "name": "api",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["pnpm", "dev", "--filter", "api"],
-      "console": "internalConsole",
-      "internalConsoleOptions": "openOnSessionStart",
-      "skipFiles": ["<node_internals>/**"],
-      "sourceMaps": true,
-      "outputCapture": "std"
+      "program": "${workspaceFolder}/apps/api/src/index.ts",
+      "cwd": "${workspaceFolder}",
+      "watchMode": "hot",
+      "noDebug": false,
+      "stopOnEntry": false,
+      "runtime": "bun",
+      "internalConsoleOptions": "openOnSessionStart"
     }
   ]
 }
