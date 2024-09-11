@@ -36,6 +36,7 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
       enabled: false,
       apiKeys: [],
     },
+    enableSwagger: false,
   },
   drivers: {
     memory: {
@@ -124,6 +125,7 @@ const ApiConfigurationValidator = z.object({
       enabled: z.boolean(),
       apiKeys: z.array(z.string()),
     }),
+    enableSwagger: z.boolean(),
   }),
   drivers: z.object({
     memory: z.object({
@@ -222,7 +224,7 @@ async function startSDK(
   const sdk = new NodeSDK({
     resource: new Resource({
       [ATTR_SERVICE_NAME]: API_SERVICE_NAME,
-      [ATTR_SERVICE_VERSION]: env.CACHE_NEST_VERSION,
+      [ATTR_SERVICE_VERSION]: env.VERSION,
       [SEMRESATTRS_HOST_NAME]: os.hostname(),
     }),
     traceExporter: tracingConfig.enabled ? traceExporter : undefined,
@@ -249,7 +251,7 @@ async function startSDK(
  * @returns {Promise<ApiConfiguration>} The validated and parsed API configuration.
  */
 export async function getApiConfiguration(): Promise<ApiConfiguration> {
-  logger.info('Starting API initialization');
+  logger.info(`Initializing Cache-Nest ${env.VERSION}`);
   let apiConfig = merge({}, API_CONFIG_DEFAULTS) as ApiConfiguration;
 
   try {

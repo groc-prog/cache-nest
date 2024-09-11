@@ -46,6 +46,11 @@ export interface ApiConfiguration {
        */
       apiKeys: string[];
     };
+    /**
+     * Whether to expose Swagger documentation on `/swagger`.
+     * @default false
+     */
+    enableSwagger: boolean;
   };
   drivers: {
     /**

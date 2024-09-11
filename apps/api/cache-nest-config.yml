@@ -1,3 +1,5 @@
+server:
+  enableSwagger: true
 tracing:
   enabled: true
   exporter: grpc
