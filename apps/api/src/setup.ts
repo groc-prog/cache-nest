@@ -166,11 +166,11 @@ async function startSDK(
   metricsConfig: ApiConfiguration['metrics'],
 ): Promise<void> {
   if (!tracingConfig.enabled && !metricsConfig.enabled) {
-    logger.info('Tracing and metrics disabled, skipping OpenTelemetry initialization');
+    logger.debug('Tracing and metrics disabled, skipping OpenTelemetry initialization');
     return;
   }
 
-  logger.info('Initializing OpenTelemetry SKD');
+  logger.info('Setting up OpenTelemetry SKD');
   let traceExporter: OTLPTraceExporterGrpc | OTLPTraceExporterHttp | OTLPTraceExporterProto | ConsoleSpanExporter;
   let metricsExporter:
     | OTLPMetricExporterGrpc
@@ -239,7 +239,7 @@ async function startSDK(
     instrumentations: [new HttpInstrumentation(), new FsInstrumentation()],
   });
 
-  logger.info('Opentelemetry SDK initialized');
+  logger.info('Opentelemetry SDK ready');
   sdk.start();
 }
 
@@ -251,7 +251,7 @@ async function startSDK(
  * @returns {Promise<ApiConfiguration>} The validated and parsed API configuration.
  */
 export async function getApiConfiguration(): Promise<ApiConfiguration> {
-  logger.info(`Initializing Cache-Nest ${env.VERSION}`);
+  logger.info(`Using Cache-Nest ${env.VERSION}`);
   let apiConfig = merge({}, API_CONFIG_DEFAULTS) as ApiConfiguration;
 
   try {
@@ -302,7 +302,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
   } else {
     await startSDK(validated.data.tracing, validated.data.metrics);
 
-    logger.info('API initialized');
+    logger.info('API setup complete');
     return validated.data as ApiConfiguration;
   }
 }

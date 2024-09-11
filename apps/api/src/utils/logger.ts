@@ -15,12 +15,7 @@ const traceFormat = format((info) => {
 
 const logger = createLogger({
   level: env.LOG_LEVEL || 'http',
-  format: format.combine(
-    traceFormat(),
-    format.json(),
-    format.colorize(),
-    format.timestamp({ format: 'YYYY-MM-DD hh:mm:ss.SSS' }),
-  ),
+  format: format.combine(format.timestamp({ format: 'YYYY-MM-DD hh:mm:ss.SSS' }), format.json(), traceFormat()),
   defaultMeta: {
     service: 'cache-nest',
   },

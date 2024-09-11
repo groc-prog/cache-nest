@@ -5,7 +5,7 @@ import { env } from 'bun';
 import { Elysia } from 'elysia';
 
 import { loggingPlugin } from '@/plugins/logger';
-import healthCheckRoutes from '@/routes/health-check';
+import serverRoutes from '@/routes/server';
 import { getApiConfiguration } from '@/setup';
 import logger from '@/utils/logger';
 
@@ -15,7 +15,7 @@ export type ElysiaApp = typeof server;
 
 const apiConfiguration = await getApiConfiguration();
 
-logger.info('Starting server');
+logger.debug('Setting up server plugins and routes');
 // Add global state here so it can be inferred by all plugins/routes/etc using the
 // `ElysiaApp` type
 const server = new Elysia().decorate('configuration', apiConfiguration).decorate('logger', logger);
@@ -51,13 +51,13 @@ if (apiConfiguration.server.enableSwagger)
   );
 
 server
-  .group('/api', (app) => app.use(healthCheckRoutes))
+  .group('/api', (app) => app.use(serverRoutes))
   .listen(
     {
       port: apiConfiguration.server.port,
       hostname: apiConfiguration.server.host,
     },
     (bunServer) => {
-      logger.info(`Server started on ${bunServer.hostname}:${bunServer.port}`);
+      logger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
     },
   );
