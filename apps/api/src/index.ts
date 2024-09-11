@@ -16,15 +16,16 @@ export type ElysiaApp = typeof server;
 const apiConfiguration = await getApiConfiguration();
 
 logger.info('Starting server');
-const server = new Elysia()
-  .decorate('logger', logger)
-  .decorate('configuration', apiConfiguration)
-  .use(
-    cors({
-      origin: apiConfiguration.server.cors.origin,
-      methods: ['POST', 'GET', 'DELETE'],
-    }),
-  );
+// Add global state here so it can be inferred by all plugins/routes/etc using the
+// `ElysiaApp` type
+const server = new Elysia().decorate('configuration', apiConfiguration).decorate('logger', logger);
+
+server.use(loggingPlugin).use(
+  cors({
+    origin: apiConfiguration.server.cors.origin,
+    methods: ['POST', 'GET', 'DELETE'],
+  }),
+);
 
 if (apiConfiguration.tracing.enabled) server.use(opentelemetry());
 if (apiConfiguration.server.enableSwagger)
@@ -49,15 +50,12 @@ if (apiConfiguration.server.enableSwagger)
     }),
   );
 
-server
-  .use(loggingPlugin)
-  .use(healthCheckRoutes)
-  .listen(
-    {
-      port: apiConfiguration.server.port,
-      hostname: apiConfiguration.server.host,
-    },
-    (bunServer) => {
-      logger.info(`Server started on ${bunServer.hostname}:${bunServer.port}`);
-    },
-  );
+server.use(healthCheckRoutes).listen(
+  {
+    port: apiConfiguration.server.port,
+    hostname: apiConfiguration.server.host,
+  },
+  (bunServer) => {
+    logger.info(`Server started on ${bunServer.hostname}:${bunServer.port}`);
+  },
+);

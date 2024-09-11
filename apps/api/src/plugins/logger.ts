@@ -1,5 +1,6 @@
 import { env } from 'bun';
 import { merge } from 'lodash-es';
+import { Stream } from 'stream';
 
 import type { ElysiaApp } from '@/index';
 
@@ -13,16 +14,19 @@ export const loggingPlugin = (app: ElysiaApp): ElysiaApp => {
     .derive(() => ({
       startTime: process.hrtime(),
     }))
-    .onAfterResponse(({ logger, startTime, request, set, headers, server }) => {
+    .onAfterResponse(async ({ logger, startTime, request, response, set, headers, server }) => {
       const durationHrTime = process.hrtime(startTime);
       const duration = durationHrTime[0] * 1e3 + durationHrTime[1] / 1e6;
+
+      // Calculate content length since Elysia does not expose the header
+      const contentLength = response instanceof Stream ? 0 : Buffer.byteLength(JSON.stringify(response));
 
       let payload = {
         method: request.method,
         url: request.url,
         status: set.status,
-        contentLength: headers['content-length'] || 0,
-        durationMs: duration.toFixed(3),
+        contentLength,
+        handlerDurationMs: duration.toFixed(4),
       };
 
       if (env.NODE_ENV !== 'development')
