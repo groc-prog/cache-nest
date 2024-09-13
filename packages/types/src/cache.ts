@@ -22,8 +22,9 @@ export type Identifier = string | number | boolean | Identifier[] | { [key: stri
 
 /**
  * Cache stored by the active driver.
+ * @template T - The expected type of the cache data
  */
-export interface Cache {
+export interface Cache<T> {
   /**
    * The identifier of the cache. This identifier is normalized to a internal format before the cache is written. Has
    * to be unique for each cache entry.
@@ -46,7 +47,7 @@ export interface Cache {
   /**
    * The JSON-compatible data serialized to a string.
    */
-  data: string;
+  data: T;
   options: {
     /**
      * The TTL (time to live) of the cache in milliseconds. If set, the cache will be invalidated and garbage collected
