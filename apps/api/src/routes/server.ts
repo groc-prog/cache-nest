@@ -1,10 +1,10 @@
 import { t } from 'elysia';
 
-import type { ElysiaApp } from '@/index';
+import type { App } from '@/index';
 import { OpenTelemetryExporter } from '@/types/configuration';
 
-const router = (app: ElysiaApp) =>
-  app.group('/server', (group) =>
+export default (app: App) =>
+  app.group('/server', (group) => {
     group.get(
       '/configuration',
       ({ configuration }) => ({
@@ -118,7 +118,9 @@ const router = (app: ElysiaApp) =>
           }),
         }),
       },
-    ),
-  );
+    );
 
-export default router;
+    group.get('', () => null);
+
+    return group;
+  });

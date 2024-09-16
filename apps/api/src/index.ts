@@ -10,10 +10,6 @@ import serverRoutes from '@/routes/server';
 import { getApiConfiguration } from '@/setup';
 import globalLogger from '@/utils/logger';
 
-// This might be a pretty hacky way of getting the types to work, but i currently don't
-// see a way around it for getting plugins to have the correct typing
-export type ElysiaApp = typeof elysiaServer;
-
 const apiConfiguration = await getApiConfiguration();
 
 globalLogger.debug('Setting up server plugins and routes');
@@ -23,6 +19,12 @@ const elysiaServer = new Elysia()
   .derive(() => ({
     startTime: process.hrtime(),
   }))
+  .use(
+    cors({
+      origin: apiConfiguration.server.cors.origin,
+      methods: ['POST', 'GET', 'DELETE'],
+    }),
+  )
   .onError(({ error, code }) => {
     const spanContext = trace.getActiveSpan()?.spanContext();
 
@@ -35,7 +37,7 @@ const elysiaServer = new Elysia()
       spanId: spanContext ? spanContext.spanId : undefined,
     };
   })
-  .onAfterResponse(async ({ logger, startTime, request, set, headers, server, path }) => {
+  .onAfterResponse(async ({ logger, request, response, set, headers, server, path, startTime }) => {
     const durationHrTime = process.hrtime(startTime);
     const duration = durationHrTime[0] * 1e3 + durationHrTime[1] / 1e6;
 
@@ -44,6 +46,7 @@ const elysiaServer = new Elysia()
       url: request.url,
       status: set.status,
       handlerDurationMs: duration.toFixed(4),
+      contentLength: response ? Buffer.byteLength(JSON.stringify(response)) : '-',
     };
 
     if (env.NODE_ENV !== 'development')
@@ -54,13 +57,7 @@ const elysiaServer = new Elysia()
       });
 
     logger.http(`${request.method} ${path}`, payload);
-  })
-  .use(
-    cors({
-      origin: apiConfiguration.server.cors.origin,
-      methods: ['POST', 'GET', 'DELETE'],
-    }),
-  );
+  });
 
 if (apiConfiguration.tracing.enabled) elysiaServer.use(opentelemetry());
 if (apiConfiguration.server.enableSwagger)
@@ -97,3 +94,5 @@ elysiaServer
       globalLogger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
     },
   );
+
+export type App = typeof elysiaServer;

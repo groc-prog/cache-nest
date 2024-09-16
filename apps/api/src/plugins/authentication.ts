@@ -1,4 +1,4 @@
-import type { ElysiaApp } from '@/index';
+import type { App } from '@/index';
 import { tracer } from '@/utils/opentelemetry';
 
 /**
@@ -7,10 +7,10 @@ import { tracer } from '@/utils/opentelemetry';
  * invalid, a `401 response` is returned.
  *
  * If API key authentication is disabled, this method is a no-op.
- * @param {ElysiaApp} app - The Elysia application instance.
- * @returns {ElysiaApp} The app with the plugin applied to it.
+ * @param {App} app - The Elysia application instance.
+ * @returns {App} The app with the plugin applied to it.
  */
-export const authenticationPlugin = (app: ElysiaApp): ElysiaApp =>
+export const authenticationPlugin = (app: App): App =>
   app.onBeforeHandle(({ headers, error, configuration }) => {
     if (!configuration.server.authentication.enabled) return;
 
