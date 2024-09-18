@@ -87,7 +87,7 @@ export abstract class BaseCachePolicy extends EventEmitter {
         'cache.hash': hash,
       });
 
-      if (cache.options.ttl > 0) this._registerTTL(hash, cache.options.ttl);
+      if (cache.options.ttl > 0) this.registerTTL(hash, cache.options.ttl);
 
       span.end();
       createdCachesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': this.policy, 'cache.hash': hash });
@@ -117,27 +117,12 @@ export abstract class BaseCachePolicy extends EventEmitter {
   }
 
   /**
-   * Generates a hash based on the given identifier. To prevent duplicates between cache and
-   * invalidation hashes, cache hashes are prefixed with a `c`, while invalidation
-   * hashes use a `i`.
-   * @protected
-   * @param {Identifier} identifier - The cache identifier.
-   * @param {boolean} [isCacheHash=true] - Whether to generate a cache or invalidation identifier.
-   * @returns {string} The generated hash.
-   */
-  protected _generateHash(identifier: Identifier, isCacheHash: boolean = true): string {
-    this._logger.debug(`Generating hash for ${isCacheHash ? 'cache' : 'invalidator'}`);
-    return `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
-  }
-
-  /**
    * Registers TTL for the given hash. If a TTL for the given hash already exists, it is reset.
-   * @protected
    * @emits BaseCachePolicy#ttlExpired
    * @param {string} hash - Hash to register the TTL for.
    * @param {number} ttl - TTL time.
    */
-  protected _registerTTL(hash: string, ttl: number): void {
+  registerTTL(hash: string, ttl: number): void {
     tracer.startActiveSpan(`RegisterTTL`, (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
@@ -184,5 +169,19 @@ export abstract class BaseCachePolicy extends EventEmitter {
       );
       span.end();
     });
+  }
+
+  /**
+   * Generates a hash based on the given identifier. To prevent duplicates between cache and
+   * invalidation hashes, cache hashes are prefixed with a `c`, while invalidation
+   * hashes use a `i`.
+   * @protected
+   * @param {Identifier} identifier - The cache identifier.
+   * @param {boolean} [isCacheHash=true] - Whether to generate a cache or invalidation identifier.
+   * @returns {string} The generated hash.
+   */
+  protected _generateHash(identifier: Identifier, isCacheHash: boolean = true): string {
+    this._logger.debug(`Generating hash for ${isCacheHash ? 'cache' : 'invalidator'}`);
+    return `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
   }
 }
