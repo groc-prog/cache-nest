@@ -13,7 +13,7 @@ const traceFormat = format((info) => {
   return info;
 });
 
-const logger = createLogger({
+export default createLogger({
   level: env.LOG_LEVEL || 'http',
   format: format.combine(format.timestamp({ format: 'YYYY-MM-DD hh:mm:ss.SSS' }), format.json(), traceFormat()),
   defaultMeta: {
@@ -21,5 +21,3 @@ const logger = createLogger({
   },
   transports: [new transports.Console()],
 });
-
-export default logger;

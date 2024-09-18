@@ -11,10 +11,11 @@ import { tracer } from '@/utils/opentelemetry';
  * @returns {App} The app with the plugin applied to it.
  */
 export const authenticationPlugin = (app: App): App =>
-  app.onBeforeHandle(({ headers, error, configuration }) => {
+  app.onBeforeHandle(({ headers, error, configuration, logger }) => {
     if (!configuration.server.authentication.enabled) return;
 
-    tracer.startActiveSpan('plugin/authentication', (span) => {
+    tracer.startActiveSpan('ApiTokenAuthentication', (span) => {
+      logger.info('Validating API token');
       const authHeader = headers.authorization?.split(' ');
       if (!authHeader) {
         span.end();
