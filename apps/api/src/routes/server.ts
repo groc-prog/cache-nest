@@ -120,7 +120,5 @@ export default (app: App) =>
       },
     );
 
-    group.get('', () => null);
-
     return group;
   });

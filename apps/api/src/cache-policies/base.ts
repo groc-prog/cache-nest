@@ -10,7 +10,7 @@ import type { CreateCache } from '@/types/cache';
 import logger from '@/utils/logger';
 import { createdCachesCounter, totalEvictionsCounter, tracer, ttlEvictionsCounter } from '@/utils/opentelemetry';
 
-export abstract class BaseCache extends EventEmitter {
+export abstract class BaseCachePolicy extends EventEmitter {
   policy: EvictionPolicy;
 
   driver: Driver;
@@ -18,8 +18,6 @@ export abstract class BaseCache extends EventEmitter {
   protected _logger: Logger;
 
   protected _ttlMap: Map<string, NodeJS.Timer> = new Map();
-
-  protected _invalidationMap: Map<string, Set<string>> = new Map();
 
   constructor(policy: EvictionPolicy, driver: Driver) {
     super();
@@ -31,52 +29,42 @@ export abstract class BaseCache extends EventEmitter {
   }
 
   /**
-   * Creates a new cache with a newly generated identifier.
+   * Starts tracking a new hash.
    * @abstract
    * @template T - The expected type of the cache data.
-   * @param {Identifier} identifier - The cache identifier.
-   * @param {CreateCache<T>} cache - The cache to set.
-   * @returns {MaybePromise<[string, Cache<T>]>} The cache identifier and cache.
+   * @param {Cache<T>} cache - The cache to track.
    */
-  abstract create<T>(identifier: Identifier, cache: CreateCache<T>): MaybePromise<[string, Cache<T>]>;
+  abstract startTracking<T>(cache: Cache<T>): MaybePromise<void>;
 
   /**
    * Updates the hit count and access time of a cache entry. If the cache entry is not found, a cache
    * miss is recorded.
    * @abstract
    * @template T - The expected type of the cache data.
-   * @param {Identifier} identifier - The cache identifier.
-   * @returns {MaybePromise<Cache<T>>} The updated cache.
+   * @param {Cache<T>} cache - The cache to hit.
    */
-  abstract hit<T>(identifier: Identifier): MaybePromise<Cache<T>>;
+  abstract hit<T>(cache: Cache<T>): MaybePromise<void>;
 
   /**
    * Evicts all caches matching the given invalidation identifier.
    * @abstract
-   * @param {Identifier} identifier - The cache identifier.
+   * @template T - The expected type of the cache data.
+   * @emits BaseCachePolicy#evictFromOther
+   * @param {Cache<T>} cache - The cache to track.
    */
-  abstract evict(identifier: Identifier): MaybePromise<void>;
+  abstract evict<T>(cache: Cache<T>): MaybePromise<void>;
 
   /**
-   * Generates a hash based on the given identifier. To prevent duplicates between cache and
-   * invalidation hashes, cache hashes are prefixed with a `c`, while invalidation
-   * hashes use a `i`.
-   * @protected
+   * Creates a new cache with a newly generated identifier.
+   * @abstract
+   * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
-   * @param {boolean} [isCacheHash=true] - Whether to generate a cache or invalidation identifier.
-   * @returns {string} The generated hash.
+   * @param {CreateCache<T>} partialCache - The cache to set.
+   * @returns {MaybePromise<[string, Cache<T>]>} The cache identifier and cache.
    */
-  protected _generateHash(identifier: Identifier, isCacheHash: boolean = true): string {
-    return `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
-  }
-
-  protected _generateCache<T>(
-    identifier: Identifier,
-    data: T,
-    options?: Partial<Pick<Cache<T>, 'options'>>,
-    metadata?: Pick<Cache<T>, 'metadata'>,
-  ): [string, Cache<T>] {
+  generateCache<T>(identifier: Identifier, partialCache: CreateCache<T>): [string, Cache<T>] {
     return tracer.startActiveSpan('GenerateCache', (span) => {
+      this._logger.debug('Generating new cache');
       const hash = this._generateHash(identifier);
       const cache: Cache<T> = merge(
         {},
@@ -90,11 +78,7 @@ export abstract class BaseCache extends EventEmitter {
             invalidatedBy: [],
           },
         },
-        {
-          data,
-          options,
-          metadata,
-        },
+        partialCache,
       );
 
       span.setAttributes({
@@ -104,18 +88,6 @@ export abstract class BaseCache extends EventEmitter {
       });
 
       if (cache.options.ttl > 0) this._registerTTL(hash, cache.options.ttl);
-      if (cache.options.invalidatedBy.length !== 0) {
-        this._logger.info(
-          `Registering ${cache.options.invalidatedBy.length} invalidation identifiers for cache ${hash}`,
-        );
-        cache.options.invalidatedBy.forEach((invalidator) => {
-          const invalidatorHash = this._generateHash(invalidator, false);
-          const map = this._invalidationMap.get(invalidatorHash);
-
-          if (map) map.add(hash);
-          else this._invalidationMap.set(invalidatorHash, new Set([hash]));
-        });
-      }
 
       span.end();
       createdCachesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': this.policy, 'cache.hash': hash });
@@ -124,20 +96,56 @@ export abstract class BaseCache extends EventEmitter {
   }
 
   /**
+   * Clears any existing TTL timers.
+   * @param {string} hash - Hash to register the TTL for.
+   */
+  clearTTL(hash: string): void {
+    tracer.startActiveSpan(`ClearTTL`, (span) => {
+      span.setAttributes({
+        'cache.driver': this.driver,
+        'cache.policy': this.policy,
+        'cache.hash': hash,
+      });
+
+      if (this._ttlMap.has(hash)) {
+        this._logger.verbose(`Clearing TTL for hash ${hash}`);
+        clearTimeout(this._ttlMap.get(hash));
+      }
+
+      span.end();
+    });
+  }
+
+  /**
+   * Generates a hash based on the given identifier. To prevent duplicates between cache and
+   * invalidation hashes, cache hashes are prefixed with a `c`, while invalidation
+   * hashes use a `i`.
+   * @protected
+   * @param {Identifier} identifier - The cache identifier.
+   * @param {boolean} [isCacheHash=true] - Whether to generate a cache or invalidation identifier.
+   * @returns {string} The generated hash.
+   */
+  protected _generateHash(identifier: Identifier, isCacheHash: boolean = true): string {
+    this._logger.debug(`Generating hash for ${isCacheHash ? 'cache' : 'invalidator'}`);
+    return `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
+  }
+
+  /**
    * Registers TTL for the given hash. If a TTL for the given hash already exists, it is reset.
    * @protected
+   * @emits BaseCachePolicy#ttlExpired
    * @param {string} hash - Hash to register the TTL for.
    * @param {number} ttl - TTL time.
    */
   protected _registerTTL(hash: string, ttl: number): void {
-    tracer.startActiveSpan(`${this.driver}/${this.policy}/registerTTL`, (span) => {
+    tracer.startActiveSpan(`RegisterTTL`, (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
         'cache.policy': this.policy,
         'cache.hash': hash,
         'cache.ttl': ttl,
       });
-      this._clearTTL(hash);
+      this.clearTTL(hash);
 
       this._logger.verbose(`Setting TTL for hash ${hash} to ${ttl}`);
       this._ttlMap.set(
@@ -164,33 +172,16 @@ export abstract class BaseCache extends EventEmitter {
             this._logger.info(`TTL for hash ${hash} expired, evicting cache`);
             this._ttlMap.delete(hash);
 
-            this.emit('evict', hash);
+            /**
+             * @event BaseCachePolicy#ttlExpired
+             * @type {string}
+             * @property {string} hash - The hash of the expired cache.
+             */
+            this.emit('ttlExpired', hash);
             evictionSpan.end();
           });
         }, ttl),
       );
-      span.end();
-    });
-  }
-
-  /**
-   * Clears any existing TTL timers.
-   * @protected
-   * @param {string} hash - Hash to register the TTL for.
-   */
-  protected _clearTTL(hash: string): void {
-    tracer.startActiveSpan(`${this.driver}/${this.policy}/clearTTL`, (span) => {
-      span.setAttributes({
-        'cache.driver': this.driver,
-        'cache.policy': this.policy,
-        'cache.hash': hash,
-      });
-
-      if (this._ttlMap.has(hash)) {
-        this._logger.verbose(`Clearing TTL for hash ${hash}`);
-        clearTimeout(this._ttlMap.get(hash));
-      }
-
       span.end();
     });
   }

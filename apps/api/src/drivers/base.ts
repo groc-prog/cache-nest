@@ -1,10 +1,8 @@
 import type { MaybePromise } from 'elysia';
-import EventEmitter from 'events';
-import objectHash from 'object-hash';
 
 import type { Cache, EvictionPolicy, Identifier } from '@cache-nest/types';
 
-export abstract class BaseDriver extends EventEmitter {
+export abstract class BaseDriver {
   /**
    * Initializes the driver and runs any necessary setup.
    * @abstract
@@ -14,7 +12,7 @@ export abstract class BaseDriver extends EventEmitter {
   /**
    * Returns a `cache entry` or `null` for the given identifier.
    * @abstract
-   * @template T - The expected type of the cache data
+   * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
    * @param {EvictionPolicy} policy - The eviction policy the entry uses.
    * @returns {MaybePromise<Cache<T> | null>} The cache entry or null.
@@ -48,8 +46,4 @@ export abstract class BaseDriver extends EventEmitter {
    * of the used cache size.
    */
   abstract resourceUsage(): MaybePromise<[number, number, number]>;
-
-  protected _hash(identifier: Identifier, isCacheHash: boolean = true): string {
-    return `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
-  }
 }
