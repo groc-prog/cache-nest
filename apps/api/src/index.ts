@@ -115,6 +115,9 @@ elysiaServer
     await drivers[Driver.MEMORY].invalidate((body as any).identifier, Policy.LRU);
     return error('No Content');
   })
+  .get('/usage', async ({ drivers }) => {
+    return drivers[Driver.MEMORY].resourceUsage();
+  })
   .listen(
     {
       port: apiConfiguration.server.port,

@@ -1,7 +1,7 @@
 import type { MaybePromise } from 'elysia';
 import type { Logger } from 'winston';
 
-import type { Cache, Driver, Policy, Identifier } from '@cache-nest/types';
+import type { Cache, Driver, Policy, Identifier, DriverResourceUsage } from '@cache-nest/types';
 
 import type { CreateCache } from '@/types/cache';
 import logger from '@/utils/logger';
@@ -62,10 +62,10 @@ export abstract class BaseDriver {
    * Returns the current resource usage of the driver. This includes the number of used bytes
    * and a percentage of the used cache size.
    * @abstract
-   * @returns {MaybePromise<[number, number]> | [number, number]} The number of used bytes and the percentage
+   * @returns {MaybePromise<DriverResourceUsage>} The number of used bytes and the percentage
    * of the used cache size.
    */
-  abstract resourceUsage(): MaybePromise<[number, number, number]>;
+  abstract resourceUsage(): MaybePromise<DriverResourceUsage>;
 
   /**
    * Checks if the given cache can be inserted without overstepping the defined maximum cache size. If not

@@ -90,6 +90,7 @@ export class LRUPolicy extends BasePolicy {
       if (this._mostRecentlyUsed?.key === node.key) this._mostRecentlyUsed = node.prev;
       if (node.prev) node.prev.next = node.next;
       if (node.next) node.next.prev = node.prev;
+      this.clearTTL(node.key);
 
       span.end();
     });
@@ -139,10 +140,11 @@ export class LRUPolicy extends BasePolicy {
   }
 
   evict(): string | null {
-    return tracer.startActiveSpan('StopTrackingCache', (span) => {
+    return tracer.startActiveSpan('Evict', (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
         'cache.policy': this.policy,
+        'eviction.cause': 'size',
       });
 
       // If the least recently used node is null, we can't evict anything.

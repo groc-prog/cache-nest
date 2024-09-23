@@ -1,9 +1,9 @@
 import { Mutex } from 'async-mutex';
 import type { MaybePromise } from 'elysia';
-import { isNumber, parseInt } from 'lodash-es';
+import { isNumber, lowerCase, parseInt } from 'lodash-es';
 import os from 'os';
 
-import { Driver, Policy, type Cache, type Identifier } from '@cache-nest/types';
+import { Driver, Policy, type Cache, type DriverResourceUsage, type Identifier } from '@cache-nest/types';
 
 import { BaseDriver } from '@/drivers/base';
 import type { BasePolicy } from '@/policies/base';
@@ -151,7 +151,7 @@ export class MemoryDriver extends BaseDriver {
     tracer.startActiveSpan('InvalidateCaches', (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
-        'cache.priority': policy,
+        'cache.policy': policy,
       });
       this._logger.info(`Evicting all caches affected by ${identifiers.length} invalidation identifiers`);
 
@@ -166,14 +166,14 @@ export class MemoryDriver extends BaseDriver {
 
           invalidateCacheSpan.setAttributes({
             'cache.driver': this.driver,
-            'cache.priority': policy,
+            'cache.policy': policy,
             'cache.affected': affectedCaches?.size || 0,
             'invalidator.hash': hash,
           });
 
           affectedCaches?.forEach((cacheHash) => {
             this._logger.debug(`Evicting cache ${cacheHash}`);
-            this._policies[policy].clearTTL(cacheHash);
+            this._policies[policy].stopTracking(cacheHash);
             this._caches[policy].delete(cacheHash);
 
             totalEvictionsCounter.add(1, {
@@ -197,7 +197,34 @@ export class MemoryDriver extends BaseDriver {
     });
   }
 
-  resourceUsage(): MaybePromise<[number, number, number]> {}
+  resourceUsage(): MaybePromise<DriverResourceUsage> {
+    return tracer.startActiveSpan('ResourceUsage', (span) => {
+      span.setAttributes({
+        'cache.driver': this.driver,
+      });
+
+      const resourceUsage = Object.keys(this._caches).reduce(
+        (obj, policy) => {
+          const size = Buffer.byteLength(JSON.stringify([...this._caches[policy as Policy].values()]));
+          const relativeSize = (size * 100) / (this._config.maxSize as number);
+
+          obj[lowerCase(policy) as Lowercase<Policy>] = {
+            cacheCount: this._caches[policy as Policy].size,
+            relativeSize: parseFloat(relativeSize.toFixed(6)),
+            size,
+          };
+
+          return obj;
+        },
+        {
+          total: this._getCurrentCacheSize(),
+        } as DriverResourceUsage,
+      );
+
+      span.end();
+      return resourceUsage;
+    });
+  }
 
   protected _getCurrentCacheSize(): number {
     return Object.values(this._caches).reduce((total, cacheMap) => {
@@ -210,7 +237,7 @@ export class MemoryDriver extends BaseDriver {
     tracer.startActiveSpan('EnsureCacheSizeLimit', async (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
-        'cache.priority': policy,
+        'cache.policy': policy,
       });
       this._logger.verbose('Ensuring cache size limits');
 
