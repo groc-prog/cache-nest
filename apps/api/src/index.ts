@@ -4,21 +4,38 @@ import { swagger } from '@elysiajs/swagger';
 import { trace } from '@opentelemetry/api';
 import { env } from 'bun';
 import { Elysia } from 'elysia';
+import { autoload } from 'elysia-autoload';
 import { merge } from 'lodash-es';
 
-import serverRoutes from '@/routes/server';
+import { Driver, Policy } from '@cache-nest/types';
+
+import type { BaseDriver } from '@/drivers/base';
+import { MemoryDriver } from '@/drivers/memory';
 import { getApiConfiguration } from '@/setup';
 import globalLogger from '@/utils/logger';
 
 const apiConfiguration = await getApiConfiguration();
 
+// @ts-expect-error
+const cacheDrivers: Record<Driver, BaseDriver> = {
+  [Driver.MEMORY]: new MemoryDriver(apiConfiguration.drivers.memory),
+};
+
+for (const driver in cacheDrivers) await cacheDrivers[driver as Driver].init();
+
 globalLogger.debug('Setting up server plugins and routes');
 const elysiaServer = new Elysia()
   .decorate('configuration', apiConfiguration)
   .decorate('logger', globalLogger)
+  .decorate('drivers', cacheDrivers)
   .derive(() => ({
     startTime: process.hrtime(),
   }))
+  .use(
+    await autoload({
+      prefix: '/api',
+    }),
+  )
   .use(
     cors({
       origin: apiConfiguration.server.cors.origin,
@@ -84,7 +101,20 @@ if (apiConfiguration.server.enableSwagger)
   );
 
 elysiaServer
-  .group('/api', (app) => app.use(serverRoutes))
+  .post('/set', async ({ drivers, body }) => {
+    const result = await drivers[Driver.MEMORY].set((body as any).identifier, Policy.LRU, body as any);
+
+    return { ok: true, result };
+  })
+  .post('/get', async ({ drivers, body, error }) => {
+    const cache = await drivers[Driver.MEMORY].get((body as any).identifier, Policy.LRU);
+    if (cache === null) return error('Not Found');
+    return cache;
+  })
+  .post('/evict', async ({ drivers, body, error }) => {
+    await drivers[Driver.MEMORY].invalidate((body as any).identifier, Policy.LRU);
+    return error('No Content');
+  })
   .listen(
     {
       port: apiConfiguration.server.port,

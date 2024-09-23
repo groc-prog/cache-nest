@@ -1,19 +1,14 @@
 import type { MaybePromise } from 'elysia';
+import { merge } from 'lodash-es';
 
-import { Driver, EvictionPolicy, type Cache } from '@cache-nest/types';
+import { Driver, Policy, type Cache } from '@cache-nest/types';
 
-import { BaseCachePolicy } from '@/cache-policies/base';
-import { tracer } from '@/utils/opentelemetry';
+import { BasePolicy } from '@/policies/base';
+import { cacheHitsCounter, tracer } from '@/utils/opentelemetry';
 
 class Node {
-  /**
-   * The previous node which has a older access time than the current node.
-   */
   prev: Node | null;
 
-  /**
-   * The next node which has a newer access time than the current node.
-   */
   next: Node | null;
 
   key: string;
@@ -25,20 +20,30 @@ class Node {
   }
 }
 
-export class LRUCachePolicy extends BaseCachePolicy {
-  protected _mostRecentlyUsed: Node | null = null;
+export class LRUPolicy extends BasePolicy {
+  private _mostRecentlyUsed: Node | null = null;
 
-  protected _leastRecentlyUsed: Node | null = null;
+  private _leastRecentlyUsed: Node | null = null;
 
-  protected _cacheKeyMap: Map<string, Node> = new Map();
+  private _cacheKeyMap: Map<string, Node> = new Map();
 
   constructor(driver: Driver) {
-    super(EvictionPolicy.LRU, driver);
+    super(Policy.LRU, driver);
+
+    this.on('ttlExpired', (hash) => {
+      const node = this._cacheKeyMap.get(hash);
+      if (node === undefined) return;
+
+      if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
+      if (this._mostRecentlyUsed?.key === node.key) this._mostRecentlyUsed = node.prev;
+      if (node.prev) node.prev.next = node.next;
+      if (node.next) node.next.prev = node.prev;
+    });
   }
 
-  startTracking<T>(cache: Cache<T>): MaybePromise<void> {
+  track<T>(cache: Cache<T>): MaybePromise<void> {
     tracer.startActiveSpan('TrackCache', (span) => {
-      const hash = this._generateHash(cache.identifier);
+      const hash = this.generateHash(cache.identifier);
       this._logger.verbose(`Tracking new cache ${hash}`);
       span.setAttributes({
         'cache.driver': this.driver,
@@ -66,10 +71,15 @@ export class LRUCachePolicy extends BaseCachePolicy {
     });
   }
 
-  hit<T>(cache: Cache<T>): MaybePromise<void> {
-    tracer.startActiveSpan('HitCache', (span) => {
-      const hash = this._generateHash(cache.identifier);
+  hit<T>(cache: Cache<T>): MaybePromise<Cache<T>> {
+    return tracer.startActiveSpan('HitCache', (span) => {
+      const hash = this.generateHash(cache.identifier);
       this._logger.verbose(`Increasing hit count for cache ${hash}`);
+      cacheHitsCounter.add(1, {
+        'cache.driver': this.driver,
+        'cache.policy': this.policy,
+        'cache.hash': hash,
+      });
       span.setAttributes({
         'cache.driver': this.driver,
         'cache.policy': this.policy,
@@ -98,41 +108,47 @@ export class LRUCachePolicy extends BaseCachePolicy {
         this._mostRecentlyUsed = node;
         this._mostRecentlyUsed.next = null;
       }
+
+      const updatedCache = merge({}, cache, {
+        atime: Date.now(),
+        hits: cache.hits + 1,
+      });
+
+      span.end();
+      return updatedCache;
     });
   }
 
-  evict<T>(cache: Cache<T>): MaybePromise<void> {
-    tracer.startActiveSpan('StopTrackingCache', (span) => {
-      const hash = this._generateHash(cache.identifier);
-      this._logger.verbose(`Stopping tracking for cache ${hash}`);
+  evict(): MaybePromise<string | null> {
+    return tracer.startActiveSpan('StopTrackingCache', (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
         'cache.policy': this.policy,
-        'cache.hash': hash,
       });
 
       // If the least recently used node is null, we can't evict anything.
       if (this._leastRecentlyUsed === null) {
         this._logger.warn('No caches to evict');
-        this.emit('evictFromOther');
         span.end();
-        return;
+        return null;
       }
 
-      this._logger.info(`Evicting cache ${this._leastRecentlyUsed.key}`);
+      const hashToEvict = this._leastRecentlyUsed.key;
+      this._logger.info(`Stopping tracking of cache ${hashToEvict}`);
       const newLeastRecentlyUsedNode = this._leastRecentlyUsed.next;
 
       this._logger.debug('Deleting cache and cleaning up TTL and invalidation identifiers');
-      if (this._ttlMap.has(this._leastRecentlyUsed.key)) clearTimeout(this._ttlMap.get(this._leastRecentlyUsed.key));
-      this._cacheKeyMap.delete(this._leastRecentlyUsed.key);
+      this.clearTTL(hashToEvict);
+      this._cacheKeyMap.delete(hashToEvict);
 
       // Update the linked list and hash map
       if (newLeastRecentlyUsedNode !== null) {
         this._logger.debug('Updating least recently used node');
-        span.addEvent('updatingLeastRecentlyUsedNode');
         newLeastRecentlyUsedNode.prev = null;
       }
       this._leastRecentlyUsed = newLeastRecentlyUsedNode;
+      span.end();
+      return hashToEvict;
     });
   }
 }

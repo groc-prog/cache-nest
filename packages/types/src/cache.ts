@@ -1,7 +1,7 @@
 /**
  * The available eviction policies.
  */
-export enum EvictionPolicy {
+export enum Policy {
   LRU = 'LRU',
   MRU = 'MRU',
   LFU = 'LFU',

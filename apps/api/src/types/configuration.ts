@@ -67,6 +67,12 @@ export interface ApiConfiguration {
        * @default '20%'
        */
       maxSize: NumberOrPercentage;
+      /**
+       * Whether to evict caches from other policies if a new cache is too big for storage even after all existing
+       * caches from the current policy have been evicted.
+       * @default false
+       */
+      evictFromOthers: boolean;
       recovery: {
         /**
          * Whether to enable cache persistence. Enabling this will periodically persist a snapshot of all

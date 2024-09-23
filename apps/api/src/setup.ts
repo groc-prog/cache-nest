@@ -43,6 +43,7 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   drivers: {
     memory: {
       maxSize: '20%',
+      evictFromOthers: false,
       recovery: {
         enabled: false,
         snapshotFilePath: '.cache-nest/memory-driver.dat',
@@ -132,6 +133,7 @@ const ApiConfigurationValidator = z.object({
   drivers: z.object({
     memory: z.object({
       maxSize: NumberOrPercentageValidator,
+      evictFromOthers: z.boolean(),
       recovery: z.object({
         enabled: z.boolean(),
         snapshotFilePath: z.string(),

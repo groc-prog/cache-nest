@@ -5,6 +5,9 @@ server:
     apiKeys:
       - foo
       - bar
+drivers:
+  memory:
+    maxSize: 500
 tracing:
   enabled: true
   exporter: grpc
