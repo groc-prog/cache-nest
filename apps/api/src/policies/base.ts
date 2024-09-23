@@ -35,10 +35,16 @@ export abstract class BasePolicy extends EventEmitter {
   /**
    * Starts tracking a new hash.
    * @abstract
-   * @template T - The expected type of the cache data.
-   * @param {Cache<T>} cache - The cache to track.
+   * @param {string} hash - The hash to track.
    */
-  abstract track<T>(cache: Cache<T>): MaybePromise<void>;
+  abstract track(hash: string): MaybePromise<void>;
+
+  /**
+   * Stops tracking an existing hash.
+   * @abstract
+   * @param {string} hash - The hash to track.
+   */
+  abstract stopTracking(hash: string): MaybePromise<void>;
 
   /**
    * Updates the hit count and access time of a cache entry. If the cache entry is not found, a cache
@@ -75,7 +81,7 @@ export abstract class BasePolicy extends EventEmitter {
    */
   generateCache<T>(identifier: Identifier, partialCache: CreateCache<T>): Cache<T> {
     return tracer.startActiveSpan('GenerateCache', (span) => {
-      this._logger.debug('Generating new cache');
+      this._logger.verbose('Generating new cache');
       const hash = this.generateHash(identifier);
       const cache: Cache<T> = merge(
         {},
@@ -119,7 +125,7 @@ export abstract class BasePolicy extends EventEmitter {
       });
 
       if (this._ttlMap.has(hash)) {
-        this._logger.verbose(`Clearing TTL for hash ${hash}`);
+        this._logger.debug(`Clearing TTL for hash ${hash}`);
         clearTimeout(this._ttlMap.get(hash));
       }
 
@@ -143,7 +149,7 @@ export abstract class BasePolicy extends EventEmitter {
       });
       this.clearTTL(hash);
 
-      this._logger.verbose(`Setting TTL for hash ${hash} to ${ttl}`);
+      this._logger.info(`Registering TTL for hash ${hash} with ${ttl}`);
       this._ttlMap.set(
         hash,
         setTimeout(async () => {
@@ -165,7 +171,7 @@ export abstract class BasePolicy extends EventEmitter {
               'cache.hash': hash,
             });
 
-            this._logger.info(`TTL for hash ${hash} expired, evicting cache`);
+            this._logger.info(`TTL for hash ${hash} expired`);
             this._ttlMap.delete(hash);
 
             /**

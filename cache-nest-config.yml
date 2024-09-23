@@ -7,7 +7,7 @@ server:
       - bar
 drivers:
   memory:
-    maxSize: 500
+    maxSize: 20%
 tracing:
   enabled: true
   exporter: grpc

@@ -15,7 +15,6 @@ export abstract class BaseDriver {
     this.driver = driver;
 
     this._logger = logger.child({ driver: this.driver });
-    this._logger.verbose(`Initializing ${this.driver} driver`);
   }
 
   /**
@@ -54,10 +53,10 @@ export abstract class BaseDriver {
   /**
    * Invalidates all entries which have defined the given invalidation identifiers.
    * @abstract
-   * @param {Identifier[]} identifier - The invalidation identifiers.
+   * @param {Identifier[]} identifiers - The invalidation identifiers.
    * @param {Policy} policy - The eviction policy the entry uses.
    */
-  abstract invalidate(identifier: Identifier[], policy: Policy): MaybePromise<void>;
+  abstract invalidate(identifiers: Identifier[], policy: Policy): MaybePromise<void>;
 
   /**
    * Returns the current resource usage of the driver. This includes the number of used bytes

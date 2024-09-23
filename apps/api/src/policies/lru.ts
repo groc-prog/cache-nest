@@ -1,10 +1,9 @@
-import type { MaybePromise } from 'elysia';
 import { merge } from 'lodash-es';
 
 import { Driver, Policy, type Cache } from '@cache-nest/types';
 
 import { BasePolicy } from '@/policies/base';
-import { cacheHitsCounter, tracer } from '@/utils/opentelemetry';
+import { tracer } from '@/utils/opentelemetry';
 
 class Node {
   prev: Node | null;
@@ -41,9 +40,8 @@ export class LRUPolicy extends BasePolicy {
     });
   }
 
-  track<T>(cache: Cache<T>): MaybePromise<void> {
+  track(hash: string): void {
     tracer.startActiveSpan('TrackCache', (span) => {
-      const hash = this.generateHash(cache.identifier);
       this._logger.verbose(`Tracking new cache ${hash}`);
       span.setAttributes({
         'cache.driver': this.driver,
@@ -71,15 +69,36 @@ export class LRUPolicy extends BasePolicy {
     });
   }
 
-  hit<T>(cache: Cache<T>): MaybePromise<Cache<T>> {
-    return tracer.startActiveSpan('HitCache', (span) => {
-      const hash = this.generateHash(cache.identifier);
-      this._logger.verbose(`Increasing hit count for cache ${hash}`);
-      cacheHitsCounter.add(1, {
+  stopTracking(hash: string): void {
+    tracer.startActiveSpan('StopTrackingCache', (span) => {
+      span.setAttributes({
         'cache.driver': this.driver,
         'cache.policy': this.policy,
         'cache.hash': hash,
       });
+      this._logger.verbose(`Stop tracking node ${hash}`);
+
+      // Shift all nodes connected to the node with the given hash
+      const node = new Node(hash);
+      if (node === undefined) {
+        this._logger.warn(`Node ${hash} is not being tracked, can not stop tracking`);
+        span.end();
+        return;
+      }
+
+      if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
+      if (this._mostRecentlyUsed?.key === node.key) this._mostRecentlyUsed = node.prev;
+      if (node.prev) node.prev.next = node.next;
+      if (node.next) node.next.prev = node.prev;
+
+      span.end();
+    });
+  }
+
+  hit<T>(cache: Cache<T>): Cache<T> {
+    return tracer.startActiveSpan('HitCache', (span) => {
+      const hash = this.generateHash(cache.identifier);
+      this._logger.verbose(`Increasing hit count for cache ${hash}`);
       span.setAttributes({
         'cache.driver': this.driver,
         'cache.policy': this.policy,
@@ -119,7 +138,7 @@ export class LRUPolicy extends BasePolicy {
     });
   }
 
-  evict(): MaybePromise<string | null> {
+  evict(): string | null {
     return tracer.startActiveSpan('StopTrackingCache', (span) => {
       span.setAttributes({
         'cache.driver': this.driver,
@@ -134,7 +153,7 @@ export class LRUPolicy extends BasePolicy {
       }
 
       const hashToEvict = this._leastRecentlyUsed.key;
-      this._logger.info(`Stopping tracking of cache ${hashToEvict}`);
+      this._logger.verbose(`Stopping tracking of cache ${hashToEvict}`);
       const newLeastRecentlyUsedNode = this._leastRecentlyUsed.next;
 
       this._logger.debug('Deleting cache and cleaning up TTL and invalidation identifiers');
