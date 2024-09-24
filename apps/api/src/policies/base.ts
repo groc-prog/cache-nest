@@ -1,4 +1,3 @@
-import type { MaybePromise } from 'elysia';
 import EventEmitter from 'events';
 import { merge } from 'lodash-es';
 import objectHash from 'object-hash';
@@ -37,14 +36,14 @@ export abstract class BasePolicy extends EventEmitter {
    * @abstract
    * @param {string} hash - The hash to track.
    */
-  abstract track(hash: string): MaybePromise<void>;
+  abstract track(hash: string): void;
 
   /**
    * Stops tracking an existing hash.
    * @abstract
    * @param {string} hash - The hash to track.
    */
-  abstract stopTracking(hash: string): MaybePromise<void>;
+  abstract stopTracking(hash: string): void;
 
   /**
    * Updates the hit count and access time of a cache entry. If the cache entry is not found, a cache
@@ -52,16 +51,16 @@ export abstract class BasePolicy extends EventEmitter {
    * @abstract
    * @template T - The expected type of the cache data.
    * @param {Cache<T>} cache - The cache to hit.
-   * @returns {MaybePromise<Cache<T>>} The updated cache entry.
+   * @returns {Cache<T>} The updated cache entry.
    */
-  abstract hit<T>(cache: Cache<T>): MaybePromise<Cache<T>>;
+  abstract hit<T>(cache: Cache<T>): Cache<T>;
 
   /**
    * Evicts all caches matching the given invalidation identifier.
    * @abstract
-   * @returns {MaybePromise<string | null>} The evicted hash or null if non got evicted.
+   * @returns {string | null} The evicted hash or null if non got evicted.
    */
-  abstract evict(): MaybePromise<string | null>;
+  abstract evict(): string | null;
 
   emit<T extends keyof Events>(event: T, ...args: Parameters<Events[T]>) {
     return super.emit(event, ...args);
@@ -80,36 +79,41 @@ export abstract class BasePolicy extends EventEmitter {
    * @returns {MaybePromise<Cache<T>>} The cache.
    */
   generateCache<T>(identifier: Identifier, partialCache: CreateCache<T>): Cache<T> {
-    return tracer.startActiveSpan('GenerateCache', (span) => {
-      this._logger.verbose('Generating new cache');
-      const hash = this.generateHash(identifier);
-      const cache: Cache<T> = merge(
-        {},
-        {
-          identifier,
-          hits: 0,
-          ctime: Date.now(),
-          atime: Date.now(),
-          options: {
-            ttl: 0,
-            invalidatedBy: [],
-          },
+    return tracer.startActiveSpan(
+      'GenerateCache',
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': this.policy,
         },
-        partialCache,
-      );
+      },
+      (span) => {
+        this._logger.verbose('Generating new cache');
+        const hash = this.generateHash(identifier);
+        span.setAttribute('cache.hash', hash);
 
-      createdCachesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': this.policy, 'cache.hash': hash });
-      span.setAttributes({
-        'cache.driver': this.driver,
-        'cache.policy': this.policy,
-        'cache.hash': hash,
-      });
+        const cache: Cache<T> = merge(
+          {},
+          {
+            identifier,
+            hits: 0,
+            ctime: Date.now(),
+            atime: Date.now(),
+            options: {
+              ttl: 0,
+              invalidatedBy: [],
+            },
+          },
+          partialCache,
+        );
+        createdCachesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': this.policy, 'cache.hash': hash });
 
-      if (cache.options.ttl > 0) this.registerTTL(hash, cache.options.ttl);
+        if (cache.options.ttl > 0) this.registerTTL(hash, cache.options.ttl);
 
-      span.end();
-      return cache;
-    });
+        span.end();
+        return cache;
+      },
+    );
   }
 
   /**
@@ -117,20 +121,24 @@ export abstract class BasePolicy extends EventEmitter {
    * @param {string} hash - Hash to register the TTL for.
    */
   clearTTL(hash: string): void {
-    tracer.startActiveSpan(`ClearTTL`, (span) => {
-      span.setAttributes({
-        'cache.driver': this.driver,
-        'cache.policy': this.policy,
-        'cache.hash': hash,
-      });
+    tracer.startActiveSpan(
+      `ClearTTL`,
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': this.policy,
+          'cache.hash': hash,
+        },
+      },
+      (span) => {
+        if (this._ttlMap.has(hash)) {
+          this._logger.debug(`Clearing TTL for hash ${hash}`);
+          clearTimeout(this._ttlMap.get(hash));
+        }
 
-      if (this._ttlMap.has(hash)) {
-        this._logger.debug(`Clearing TTL for hash ${hash}`);
-        clearTimeout(this._ttlMap.get(hash));
-      }
-
-      span.end();
-    });
+        span.end();
+      },
+    );
   }
 
   /**
@@ -140,52 +148,63 @@ export abstract class BasePolicy extends EventEmitter {
    * @param {number} ttl - TTL time.
    */
   registerTTL(hash: string, ttl: number): void {
-    tracer.startActiveSpan(`RegisterTTL`, (span) => {
-      span.setAttributes({
-        'cache.driver': this.driver,
-        'cache.policy': this.policy,
-        'cache.hash': hash,
-        'cache.ttl': ttl,
-      });
-      this.clearTTL(hash);
+    tracer.startActiveSpan(
+      `RegisterTTL`,
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': this.policy,
+          'cache.hash': hash,
+          'cache.ttl': ttl,
+        },
+      },
+      (span) => {
+        this.clearTTL(hash);
 
-      this._logger.info(`Registering TTL for hash ${hash} with ${ttl}`);
-      this._ttlMap.set(
-        hash,
-        setTimeout(async () => {
-          tracer.startActiveSpan(`Evict`, (evictionSpan) => {
-            evictionSpan.setAttributes({
-              'cache.driver': this.driver,
-              'cache.policy': this.policy,
-              'cache.hash': hash,
-              'eviction.cause': 'TTL',
-            });
-            totalEvictionsCounter.add(1, {
-              'cache.driver': this.driver,
-              'cache.policy': this.policy,
-              'cache.hash': hash,
-            });
-            ttlEvictionsCounter.add(1, {
-              'cache.driver': this.driver,
-              'cache.policy': this.policy,
-              'cache.hash': hash,
-            });
+        this._logger.info(`Registering TTL for hash ${hash} with ${ttl}`);
+        this._ttlMap.set(
+          hash,
+          setTimeout(async () => {
+            tracer.startActiveSpan(
+              'Evict',
+              {
+                root: true,
+                attributes: {
+                  'cache.driver': this.driver,
+                  'cache.policy': this.policy,
+                  'cache.hash': hash,
+                  'eviction.cause': 'TTL',
+                },
+              },
+              (evictionSpan) => {
+                totalEvictionsCounter.add(1, {
+                  'cache.driver': this.driver,
+                  'cache.policy': this.policy,
+                  'cache.hash': hash,
+                });
+                ttlEvictionsCounter.add(1, {
+                  'cache.driver': this.driver,
+                  'cache.policy': this.policy,
+                  'cache.hash': hash,
+                });
 
-            this._logger.info(`TTL for hash ${hash} expired`);
-            this._ttlMap.delete(hash);
+                this._logger.info(`TTL for hash ${hash} expired`);
+                this._ttlMap.delete(hash);
 
-            /**
-             * @event BasePolicy#ttlExpired
-             * @type {string}
-             * @property {string} hash - The hash of the expired cache.
-             */
-            this.emit('ttlExpired', hash);
-            evictionSpan.end();
-          });
-        }, ttl),
-      );
-      span.end();
-    });
+                /**
+                 * @event BasePolicy#ttlExpired
+                 * @type {string}
+                 * @property {string} hash - The hash of the expired cache.
+                 */
+                this.emit('ttlExpired', hash);
+                evictionSpan.end();
+              },
+            );
+          }, ttl),
+        );
+        span.end();
+      },
+    );
   }
 
   /**

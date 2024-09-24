@@ -15,7 +15,6 @@ import { getApiConfiguration } from '@/setup';
 import globalLogger from '@/utils/logger';
 
 const apiConfiguration = await getApiConfiguration();
-
 // @ts-expect-error
 const cacheDrivers: Record<Driver, BaseDriver> = {
   [Driver.MEMORY]: new MemoryDriver(apiConfiguration.drivers.memory),
@@ -44,7 +43,6 @@ const elysiaServer = new Elysia()
   )
   .onError(({ error, code }) => {
     const spanContext = trace.getActiveSpan()?.spanContext();
-
     return {
       name: error.name,
       message: error.message,
@@ -57,7 +55,6 @@ const elysiaServer = new Elysia()
   .onAfterResponse(async ({ logger, request, response, set, headers, server, path, startTime }) => {
     const durationHrTime = process.hrtime(startTime);
     const duration = durationHrTime[0] * 1e3 + durationHrTime[1] / 1e6;
-
     let payload = {
       method: request.method,
       url: request.url,
@@ -65,17 +62,14 @@ const elysiaServer = new Elysia()
       handlerDurationMs: duration.toFixed(4),
       contentLength: response ? Buffer.byteLength(JSON.stringify(response)) : '-',
     };
-
     if (env.NODE_ENV !== 'development')
       payload = merge({}, payload, {
         referrer: request.referrer,
         ip: server?.requestIP(request),
         userAgent: headers['user-agent'],
       });
-
     logger.http(`${request.method} ${path}`, payload);
   });
-
 if (apiConfiguration.tracing.enabled) elysiaServer.use(opentelemetry());
 if (apiConfiguration.server.enableSwagger)
   elysiaServer.use(
@@ -99,11 +93,9 @@ if (apiConfiguration.server.enableSwagger)
       },
     }),
   );
-
 elysiaServer
   .post('/set', async ({ drivers, body }) => {
     const result = await drivers[Driver.MEMORY].set((body as any).identifier, Policy.LRU, body as any);
-
     return { ok: true, result };
   })
   .post('/get', async ({ drivers, body, error }) => {
@@ -127,5 +119,4 @@ elysiaServer
       globalLogger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
     },
   );
-
 export type App = typeof elysiaServer;

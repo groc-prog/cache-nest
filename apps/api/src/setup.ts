@@ -136,7 +136,7 @@ const ApiConfigurationValidator = z.object({
       evictFromOthers: z.boolean(),
       recovery: z.object({
         enabled: z.boolean(),
-        snapshotFilePath: z.string(),
+        snapshotFilePath: z.string().refine((filePath) => filePath.endsWith('.dat'), 'File must be a .dat file'),
         snapshotInterval: z.number().positive(),
       }),
     }),
@@ -267,7 +267,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
     // Should this fail we just exit the process and call it a day.
     if (configFile) {
       const configFilePath = path.parse(configFile);
-      logger.info(`Found file ${path.format(configFilePath)}`);
+      logger.verbose(`Found file ${path.format(configFilePath)}`);
 
       switch (configFilePath.ext) {
         case '.yml':

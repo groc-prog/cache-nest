@@ -87,4 +87,11 @@ export abstract class BaseDriver {
    * @returns {MaybePromise<number>} The size of all caches combined.
    */
   protected abstract _getCurrentCacheSize(): MaybePromise<number>;
+
+  /**
+   * Apply the last recorded snapshot and sets up a timer for periodically updating the snapshot.
+   * @abstract
+   * @protected
+   */
+  protected abstract _initSnapshots(): MaybePromise<void>;
 }

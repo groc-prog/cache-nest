@@ -17,6 +17,7 @@
     "@elysiajs/cors": "^1.1.1",
     "@elysiajs/opentelemetry": "^1.1.5",
     "@elysiajs/swagger": "^1.1.1",
+    "@msgpack/msgpack": "3.0.0-beta2",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-metrics-otlp-grpc": "^0.52.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.52.1",
