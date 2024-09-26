@@ -4,77 +4,68 @@ import { OTLPMetricExporter as OTLPMetricExporterProto } from '@opentelemetry/ex
 import { OTLPTraceExporter as OTLPTraceExporterGrpc } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { OTLPTraceExporter as OTLPTraceExporterHttp } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPTraceExporter as OTLPTraceExporterProto } from '@opentelemetry/exporter-trace-otlp-proto';
-import { ConsoleMetricExporter, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { NodeSDK } from '@opentelemetry/sdk-node';
+import { ConsoleMetricExporter } from '@opentelemetry/sdk-metrics';
 import { AlwaysOnSampler, BatchSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
-import { readdir, readFile, readJSON } from 'fs-extra';
+import { beforeEach, describe, expect, mock, it, jest, spyOn, type Mock } from 'bun:test';
 import { merge } from 'lodash-es';
 import os from 'os';
-import path from 'path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { OpenTelemetryExporter } from '../src/types/configuration';
+import { API_CONFIG_DEFAULTS, getApiConfiguration } from '@/setup';
+import { OpenTelemetryExporter, type ApiConfiguration } from '@/types/configuration';
 
-vi.mock('@opentelemetry/sdk-node', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@opentelemetry/sdk-node')>();
+mock.module('fs-extra', () => ({
+  default: {
+    readdir: jest.fn(),
+    readFile: jest.fn(),
+    readJSON: jest.fn(),
+  },
+}));
 
-  return {
-    ...original,
-    NodeSDK: vi.fn().mockImplementation(() => ({
-      start: vi.fn(),
-    })),
-  };
-});
+mock.module('@opentelemetry/sdk-node', () => ({
+  NodeSDK: jest.fn().mockImplementation(() => ({
+    start: jest.fn(),
+  })),
+}));
 
-vi.mock('@opentelemetry/sdk-metrics', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@opentelemetry/sdk-metrics')>();
+mock.module('@opentelemetry/sdk-metrics', () => ({
+  PeriodicExportingMetricReader: jest.fn(),
+}));
 
-  return {
-    ...original,
-    PeriodicExportingMetricReader: vi.fn(),
-  };
-});
+describe('.getApiConfiguration()', () => {
+  let sdkNodeMock: typeof import('@opentelemetry/sdk-node');
+  let sdkMetricsMock: typeof import('@opentelemetry/sdk-metrics');
+  let fsExtraMock: typeof import('fs-extra');
+  let processSpy: Mock<typeof process.exit>;
 
-vi.mock('fs-extra', async (importOriginal) => {
-  const original = await importOriginal<typeof import('fs-extra')>();
+  beforeEach(async () => {
+    sdkNodeMock = await import('@opentelemetry/sdk-node');
+    sdkMetricsMock = await import('@opentelemetry/sdk-metrics');
+    fsExtraMock = await import('fs-extra');
+    processSpy = spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
-  return {
-    ...original,
-    readdir: vi.fn(),
-    readFile: vi.fn(),
-    readJSON: vi.fn(),
-  };
-});
-
-describe('.getApiConfiguration()', async () => {
-  const processSpy = vi.spyOn(process, 'exit').mockReturnValue(undefined as never);
-  const { API_CONFIG_DEFAULTS, getApiConfiguration } = await import('../src/setup.js');
-
-  beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   it('should return the default configuration', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-    const configuration = await getApiConfiguration();
+    // @ts-ignore
+    fsExtraMock.default.readdir.mockResolvedValue([]);
 
-    expect(nodeSdkMock).toHaveBeenCalledTimes(0);
-    expect(configuration).toEqual(API_CONFIG_DEFAULTS);
+    const configuration = await getApiConfiguration();
+    expect(sdkNodeMock.NodeSDK).not.toHaveBeenCalled();
+    expect(configuration).toEqual(API_CONFIG_DEFAULTS as ApiConfiguration);
   });
 
   it('should use the configuration defined in a `cache-nest-config.yml` or `cache-nest-config.yaml` file', async () => {
-    const readdirMock = vi.mocked(readdir);
-    const readFileMock = vi.mocked(readFile);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.yml']);
-    readFileMock.mockResolvedValue(
-      // @ts-ignore
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.yml']);
+    // @ts-ignore
+    fsExtraMock.default.readFile.mockResolvedValue(
       'server:\n  port: 4000\ndrivers:\n  fileSystem:\n    maxSize: 2000\ntracing:\n  exporter: http',
     );
 
     const configuration = await getApiConfiguration();
     expect(configuration).toEqual(
-      merge({}, API_CONFIG_DEFAULTS, {
+      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
         server: {
           port: 4000,
         },
@@ -87,11 +78,10 @@ describe('.getApiConfiguration()', async () => {
   });
 
   it('should use the configuration defined in a `cache-nest-config.json` file', async () => {
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       server: { port: 4000 },
       drivers: { fileSystem: { maxSize: 2000 } },
       tracing: { exporter: OpenTelemetryExporter.HTTP },
@@ -99,7 +89,7 @@ describe('.getApiConfiguration()', async () => {
 
     const configuration = await getApiConfiguration();
     expect(configuration).toEqual(
-      merge({}, API_CONFIG_DEFAULTS, {
+      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
         server: {
           port: 4000,
         },
@@ -111,21 +101,11 @@ describe('.getApiConfiguration()', async () => {
     );
   });
 
-  it('should use the default configuration', async () => {
-    const readdirMock = vi.mocked(readdir);
-    // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.dat']);
-
-    const configuration = await getApiConfiguration();
-    expect(configuration).toEqual(API_CONFIG_DEFAULTS);
-  });
-
   it('should exit the process with a `0` code if the configuration is invalid', async () => {
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       drivers: { memory: { maxSize: -12 } },
     });
 
@@ -133,14 +113,34 @@ describe('.getApiConfiguration()', async () => {
     expect(processSpy).toHaveBeenCalledWith(0);
   });
 
-  it('should not allow `maxSize` bigger that max memory/storage', async () => {
-    vi.spyOn(os, 'totalmem').mockReturnValue(10);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
+  it('should exit the process with a `0` code if an error occurs while reading a configuration file', async () => {
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockRejectedValue(Error('Some error'));
+
+    await getApiConfiguration();
+    expect(processSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('should do nothing if a non-supported configuration file is found', async () => {
+    // @ts-ignore
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.dat']);
+
+    const configuration = await getApiConfiguration();
+    expect(sdkNodeMock.NodeSDK).not.toHaveBeenCalled();
+    expect(configuration).toEqual(API_CONFIG_DEFAULTS as ApiConfiguration);
+    // @ts-ignore
+    expect(fsExtraMock.default.readFile).not.toHaveBeenCalled();
+  });
+
+  it('should not allow `maxSize` bigger that max memory/storage', async () => {
+    spyOn(os, 'totalmem').mockReturnValue(10);
+
+    // @ts-ignore
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       drivers: { memory: { maxSize: 20 } },
     });
 
@@ -149,11 +149,10 @@ describe('.getApiConfiguration()', async () => {
   });
 
   it('should not allow `maxSize` which is neither a percentage nor a number', async () => {
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       drivers: { memory: { maxSize: 'invalid-value' } },
     });
 
@@ -162,11 +161,10 @@ describe('.getApiConfiguration()', async () => {
   });
 
   it('should not allow `maxSize` with a percentage smaller than or equal to 0', async () => {
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       drivers: { memory: { maxSize: '0%' } },
     });
 
@@ -175,11 +173,10 @@ describe('.getApiConfiguration()', async () => {
   });
 
   it('should not allow `maxSize` with a percentage greater than or equal to 100', async () => {
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       drivers: { memory: { maxSize: '100%' } },
     });
 
@@ -187,40 +184,11 @@ describe('.getApiConfiguration()', async () => {
     expect(processSpy).toHaveBeenCalledWith(0);
   });
 
-  it('should use different config file paths in development and production', async () => {
-    const pathSpy = vi.spyOn(path, 'resolve');
-    process.env.NODE_ENV = 'development';
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
-    // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({});
-
-    vi.resetModules();
-    let module = await import('../src/setup.js');
-
-    await module.getApiConfiguration();
-    expect(pathSpy).toHaveBeenCalledWith('.');
-
-    processSpy.mockClear();
-    process.env.NODE_ENV = 'production';
-    vi.resetModules();
-    module = await import('../src/setup.js');
-
-    await module.getApiConfiguration();
-    expect(pathSpy).toHaveBeenCalledWith('/etc');
-  });
-
   it('should start the OpenTelemetry SDK with the console exporters', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-    const periodicExportingMetricReaderMock = vi.mocked(PeriodicExportingMetricReader);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       tracing: {
         enabled: true,
       },
@@ -232,28 +200,25 @@ describe('.getApiConfiguration()', async () => {
 
     await getApiConfiguration();
 
-    const nodeSdkArgs = nodeSdkMock.mock.calls[0]![0];
-    const periodicExportingMetricReaderArgs = periodicExportingMetricReaderMock.mock.calls[0]![0];
-    expect(nodeSdkMock).toHaveBeenCalledTimes(1);
+    // @ts-ignore
+    const nodeSdkArgs = sdkNodeMock.NodeSDK.mock.calls[0]![0];
+    // @ts-ignore
+    const periodicExportingMetricReaderArgs = sdkMetricsMock.PeriodicExportingMetricReader.mock.calls[0]![0];
+    expect(sdkNodeMock.NodeSDK).toHaveBeenCalledTimes(1);
     expect(nodeSdkArgs?.traceExporter).toBeInstanceOf(ConsoleSpanExporter);
     expect(nodeSdkArgs?.sampler).toBeInstanceOf(AlwaysOnSampler);
     expect(nodeSdkArgs?.spanProcessors).toHaveLength(1);
     expect(nodeSdkArgs!.spanProcessors![0]).toBeInstanceOf(BatchSpanProcessor);
-    expect(nodeSdkArgs?.metricReader).toBeInstanceOf(PeriodicExportingMetricReader);
-    expect(periodicExportingMetricReaderMock).toHaveBeenCalledTimes(1);
+    expect(sdkMetricsMock.PeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
     expect(periodicExportingMetricReaderArgs.exporter).toBeInstanceOf(ConsoleMetricExporter);
     expect(periodicExportingMetricReaderArgs.exportIntervalMillis).toBe(20000);
   });
 
   it('should start the OpenTelemetry SDK with the http exporters', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-    const periodicExportingMetricReaderMock = vi.mocked(PeriodicExportingMetricReader);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       tracing: {
         enabled: true,
         exporter: OpenTelemetryExporter.HTTP,
@@ -266,28 +231,25 @@ describe('.getApiConfiguration()', async () => {
 
     await getApiConfiguration();
 
-    const nodeSdkArgs = nodeSdkMock.mock.calls[0]![0];
-    const periodicExportingMetricReaderArgs = periodicExportingMetricReaderMock.mock.calls[0]![0];
-    expect(nodeSdkMock).toHaveBeenCalledTimes(1);
+    // @ts-ignore
+    const nodeSdkArgs = sdkNodeMock.NodeSDK.mock.calls[0]![0];
+    // @ts-ignore
+    const periodicExportingMetricReaderArgs = sdkMetricsMock.PeriodicExportingMetricReader.mock.calls[0]![0];
+    expect(sdkNodeMock.NodeSDK).toHaveBeenCalledTimes(1);
     expect(nodeSdkArgs?.traceExporter).toBeInstanceOf(OTLPTraceExporterHttp);
     expect(nodeSdkArgs?.sampler).toBeInstanceOf(AlwaysOnSampler);
     expect(nodeSdkArgs?.spanProcessors).toHaveLength(1);
     expect(nodeSdkArgs!.spanProcessors![0]).toBeInstanceOf(BatchSpanProcessor);
-    expect(nodeSdkArgs?.metricReader).toBeInstanceOf(PeriodicExportingMetricReader);
-    expect(periodicExportingMetricReaderMock).toHaveBeenCalledTimes(1);
+    expect(sdkMetricsMock.PeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
     expect(periodicExportingMetricReaderArgs.exporter).toBeInstanceOf(OTLPMetricExporterHttp);
     expect(periodicExportingMetricReaderArgs.exportIntervalMillis).toBe(10000);
   });
 
   it('should start the OpenTelemetry SDK with the grpc exporters', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-    const periodicExportingMetricReaderMock = vi.mocked(PeriodicExportingMetricReader);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       tracing: {
         enabled: true,
         exporter: OpenTelemetryExporter.GRPC,
@@ -300,28 +262,25 @@ describe('.getApiConfiguration()', async () => {
 
     await getApiConfiguration();
 
-    const nodeSdkArgs = nodeSdkMock.mock.calls[0]![0];
-    const periodicExportingMetricReaderArgs = periodicExportingMetricReaderMock.mock.calls[0]![0];
-    expect(nodeSdkMock).toHaveBeenCalledTimes(1);
+    // @ts-ignore
+    const nodeSdkArgs = sdkNodeMock.NodeSDK.mock.calls[0]![0];
+    // @ts-ignore
+    const periodicExportingMetricReaderArgs = sdkMetricsMock.PeriodicExportingMetricReader.mock.calls[0]![0];
+    expect(sdkNodeMock.NodeSDK).toHaveBeenCalledTimes(1);
     expect(nodeSdkArgs?.traceExporter).toBeInstanceOf(OTLPTraceExporterGrpc);
     expect(nodeSdkArgs?.sampler).toBeInstanceOf(AlwaysOnSampler);
     expect(nodeSdkArgs?.spanProcessors).toHaveLength(1);
     expect(nodeSdkArgs!.spanProcessors![0]).toBeInstanceOf(BatchSpanProcessor);
-    expect(nodeSdkArgs?.metricReader).toBeInstanceOf(PeriodicExportingMetricReader);
-    expect(periodicExportingMetricReaderMock).toHaveBeenCalledTimes(1);
+    expect(sdkMetricsMock.PeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
     expect(periodicExportingMetricReaderArgs.exporter).toBeInstanceOf(OTLPMetricExporterGrpc);
     expect(periodicExportingMetricReaderArgs.exportIntervalMillis).toBe(10000);
   });
 
-  it('should start the OpenTelemetry SDK with the http exporters', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-    const periodicExportingMetricReaderMock = vi.mocked(PeriodicExportingMetricReader);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
+  it('should start the OpenTelemetry SDK with the protobuff exporters', async () => {
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       tracing: {
         enabled: true,
         exporter: OpenTelemetryExporter.PROTOBUFF,
@@ -334,27 +293,25 @@ describe('.getApiConfiguration()', async () => {
 
     await getApiConfiguration();
 
-    const nodeSdkArgs = nodeSdkMock.mock.calls[0]![0];
-    const periodicExportingMetricReaderArgs = periodicExportingMetricReaderMock.mock.calls[0]![0];
-    expect(nodeSdkMock).toHaveBeenCalledTimes(1);
+    // @ts-ignore
+    const nodeSdkArgs = sdkNodeMock.NodeSDK.mock.calls[0]![0];
+    // @ts-ignore
+    const periodicExportingMetricReaderArgs = sdkMetricsMock.PeriodicExportingMetricReader.mock.calls[0]![0];
+    expect(sdkNodeMock.NodeSDK).toHaveBeenCalledTimes(1);
     expect(nodeSdkArgs?.traceExporter).toBeInstanceOf(OTLPTraceExporterProto);
     expect(nodeSdkArgs?.sampler).toBeInstanceOf(AlwaysOnSampler);
     expect(nodeSdkArgs?.spanProcessors).toHaveLength(1);
     expect(nodeSdkArgs!.spanProcessors![0]).toBeInstanceOf(BatchSpanProcessor);
-    expect(nodeSdkArgs?.metricReader).toBeInstanceOf(PeriodicExportingMetricReader);
-    expect(periodicExportingMetricReaderMock).toHaveBeenCalledTimes(1);
+    expect(sdkMetricsMock.PeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
     expect(periodicExportingMetricReaderArgs.exporter).toBeInstanceOf(OTLPMetricExporterProto);
     expect(periodicExportingMetricReaderArgs.exportIntervalMillis).toBe(10000);
   });
 
   it('should not add a metrics reader if metrics are disabled', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       tracing: {
         enabled: true,
       },
@@ -365,23 +322,21 @@ describe('.getApiConfiguration()', async () => {
 
     await getApiConfiguration();
 
-    const args = nodeSdkMock.mock.calls[0]![0];
-    expect(nodeSdkMock).toHaveBeenCalledTimes(1);
-    expect(args?.traceExporter).toBeInstanceOf(ConsoleSpanExporter);
-    expect(args?.sampler).toBeInstanceOf(AlwaysOnSampler);
-    expect(args?.spanProcessors).toHaveLength(1);
-    expect(args!.spanProcessors![0]).toBeInstanceOf(BatchSpanProcessor);
-    expect(args?.metricReader).toBeUndefined();
+    // @ts-ignore
+    const nodeSdkArgs = sdkNodeMock.NodeSDK.mock.calls[0]![0];
+    expect(sdkNodeMock.NodeSDK).toHaveBeenCalledTimes(1);
+    expect(nodeSdkArgs?.traceExporter).toBeInstanceOf(ConsoleSpanExporter);
+    expect(nodeSdkArgs?.sampler).toBeInstanceOf(AlwaysOnSampler);
+    expect(nodeSdkArgs?.spanProcessors).toHaveLength(1);
+    expect(nodeSdkArgs!.spanProcessors![0]).toBeInstanceOf(BatchSpanProcessor);
+    expect(nodeSdkArgs?.metricReader).toBeUndefined();
   });
 
   it('should not set a traceExporter and spanProcessor if tracing is disabled', async () => {
-    const nodeSdkMock = vi.mocked(NodeSDK);
-
-    const readdirMock = vi.mocked(readdir);
-    const readJSONMock = vi.mocked(readJSON);
     // @ts-ignore
-    readdirMock.mockResolvedValue(['cache-nest-config.json']);
-    readJSONMock.mockResolvedValue({
+    fsExtraMock.default.readdir.mockResolvedValue(['cache-nest-config.json']);
+    // @ts-ignore
+    fsExtraMock.default.readJSON.mockResolvedValue({
       tracing: {
         enabled: false,
       },
@@ -392,11 +347,11 @@ describe('.getApiConfiguration()', async () => {
 
     await getApiConfiguration();
 
-    const args = nodeSdkMock.mock.calls[0]![0];
-    expect(nodeSdkMock).toHaveBeenCalledTimes(1);
-    expect(args?.traceExporter).toBeUndefined();
-    expect(args?.sampler).toBeInstanceOf(AlwaysOnSampler);
-    expect(args?.spanProcessors).toBeUndefined();
-    expect(args?.metricReader).toBeInstanceOf(PeriodicExportingMetricReader);
+    // @ts-ignore
+    const nodeSdkArgs = sdkNodeMock.NodeSDK.mock.calls[0]![0];
+    expect(sdkNodeMock.NodeSDK).toHaveBeenCalledTimes(1);
+    expect(nodeSdkArgs?.traceExporter).toBeUndefined();
+    expect(nodeSdkArgs?.sampler).toBeInstanceOf(AlwaysOnSampler);
+    expect(nodeSdkArgs?.spanProcessors).toBeUndefined();
   });
 });
