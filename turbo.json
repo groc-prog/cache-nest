@@ -42,6 +42,13 @@
         "^test:unit"
       ]
     },
+    "test:unit:watch": {
+      "persistent": true,
+      "cache": false,
+      "dependsOn": [
+        "^test:unit:watch"
+      ]
+    },
     "test:e2e": {
       "dependsOn": [
         "^test:e2e"
