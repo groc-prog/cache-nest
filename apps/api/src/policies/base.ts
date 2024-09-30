@@ -92,13 +92,14 @@ export abstract class BasePolicy extends EventEmitter {
         const hash = this.generateHash(identifier);
         span.setAttribute('cache.hash', hash);
 
+        const timestamp = Date.now();
         const cache: Cache<T> = merge(
           {},
           {
             identifier,
             hits: 0,
-            ctime: Date.now(),
-            atime: Date.now(),
+            ctime: timestamp,
+            atime: timestamp,
             options: {
               ttl: 0,
               invalidatedBy: [],
@@ -134,6 +135,7 @@ export abstract class BasePolicy extends EventEmitter {
         if (this._ttlMap.has(hash)) {
           this._logger.debug(`Clearing TTL for hash ${hash}`);
           clearTimeout(this._ttlMap.get(hash));
+          this._ttlMap.delete(hash);
         }
 
         span.end();
