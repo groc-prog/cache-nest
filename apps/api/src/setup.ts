@@ -149,6 +149,12 @@ const ApiConfigurationValidator = z.object({
     fileSystem: z.object({
       maxSize: NumberOrPercentageValidator,
       mountPath: z.string(),
+      evictFromOthers: z.boolean(),
+      recovery: z.object({
+        enabled: z.boolean(),
+        snapshotFilePath: z.string().refine((filePath) => filePath.endsWith('.dat'), 'File must be a .dat file'),
+        snapshotInterval: z.number().positive(),
+      }),
     }),
   }),
   tracing: z.object({
