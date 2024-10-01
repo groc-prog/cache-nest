@@ -2,17 +2,17 @@
  * The available eviction policies.
  */
 export enum Policy {
-  LRU = 'LRU',
-  MRU = 'MRU',
-  LFU = 'LFU',
-  MFU = 'MFU',
-  RR = 'RR',
-  FIFO = 'FIFO',
+  LRU = 'lru',
+  MRU = 'mru',
+  LFU = 'lfu',
+  MFU = 'mfu',
+  RR = 'rr',
+  FIFO = 'fifo',
 }
 
 export enum Driver {
-  MEMORY = 'MEMORY',
-  FILE_SYSTEM = 'FILE_SYSTEM',
+  MEMORY = 'memory',
+  FILE_SYSTEM = 'file_system',
 }
 
 /**
@@ -65,5 +65,5 @@ export interface Cache<T> {
   /**
    * Optional metadata stored with the cache. Can be used to attach any additional data to the cache entry.
    */
-  metadata?: Record<string, Identifier | Identifier[]>;
+  metadata?: Record<string, any>;
 }
