@@ -29,7 +29,7 @@ export interface ApiConfiguration {
     host: string;
     /**
      * Cors options.
-     * @see {@link https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/cors/index.d.ts}
+     * @see {@link https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/cors/index.d.ts|Cors on Github}
      */
     cors: {
       /**
@@ -105,6 +105,31 @@ export interface ApiConfiguration {
        * @default '.cache-nest/file-system'
        */
       mountPath: string;
+      /**
+       * Whether to evict caches from other policies if a new cache is too big for storage even after all existing
+       * caches from the current policy have been evicted.
+       * @default false
+       */
+      evictFromOthers: boolean;
+      recovery: {
+        /**
+         * Whether to enable cache persistence. Enabling this will periodically persist a snapshot of all
+         * caches to the defined file. If the service stops unexpectedly, the snapshot will be applied on the
+         * next startup.
+         * @default false
+         */
+        enabled: boolean;
+        /**
+         * The path to the snapshot file.
+         * @default '.cache-nest/file-system-driver.dat'
+         */
+        snapshotFilePath: string;
+        /**
+         * The interval in seconds at which a snapshot is created.
+         * @default 3600
+         */
+        snapshotInterval: number;
+      };
     };
   };
   tracing: {

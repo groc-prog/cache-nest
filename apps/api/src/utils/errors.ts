@@ -15,3 +15,13 @@ export class NoCachesToEvictError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string = 'Internal server error', status: number = 500) {
+    super(message);
+
+    this.status = status;
+  }
+}

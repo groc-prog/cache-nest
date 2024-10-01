@@ -5,7 +5,7 @@ import { OpenTelemetryExporter } from '@/types/configuration';
 
 export default (app: App) =>
   app.get(
-    '/configuration',
+    '',
     ({ configuration }) => ({
       ...configuration,
       server: {
@@ -53,6 +53,11 @@ export default (app: App) =>
               default: '20%',
               description: 'Maximum amount of memory the driver is allowed to use.',
             }),
+            evictFromOthers: t.Boolean({
+              default: false,
+              description:
+                'Whether to evict caches from other policies if a new cache is too big for storage even after all existing caches from the current policy have been evicted',
+            }),
             recovery: t.Object({
               enabled: t.Boolean({
                 default: false,
@@ -77,6 +82,26 @@ export default (app: App) =>
             mountPath: t.String({
               default: '.cache-nest/file-system',
               description: 'Path to the cache directory.',
+            }),
+            evictFromOthers: t.Boolean({
+              default: false,
+              description:
+                'Whether to evict caches from other policies if a new cache is too big for storage even after all existing caches from the current policy have been evicted',
+            }),
+            recovery: t.Object({
+              enabled: t.Boolean({
+                default: false,
+                description: 'Whether cache is periodically persisted to snapshot file.',
+              }),
+              snapshotFilePath: t.String({
+                default: '.cache-nest/file-system-driver.dat',
+                description: 'Path to snapshot file.',
+              }),
+              snapshotInterval: t.Number({
+                default: 3600,
+                minimum: 1,
+                description: 'Interval in seconds at which a snapshots are created.',
+              }),
             }),
           }),
         }),

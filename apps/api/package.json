@@ -34,6 +34,7 @@
     "@opentelemetry/sdk-trace-node": "^1.25.1",
     "@opentelemetry/semantic-conventions": "^1.26.0",
     "@opentelemetry/winston-transport": "^0.5.0",
+    "@sinclair/typebox": "^0.33.12",
     "async-mutex": "^0.5.0",
     "check-disk-space": "^3.4.0",
     "elysia": "^1.1.12",

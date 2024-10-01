@@ -53,6 +53,12 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
     fileSystem: {
       maxSize: '20%',
       mountPath: '.cache-nest/file-system',
+      evictFromOthers: false,
+      recovery: {
+        enabled: false,
+        snapshotFilePath: '.cache-nest/file-system-driver.dat',
+        snapshotInterval: 3600,
+      },
     },
   },
   tracing: {

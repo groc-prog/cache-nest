@@ -7,11 +7,12 @@ import { Elysia } from 'elysia';
 import { autoload } from 'elysia-autoload';
 import { merge } from 'lodash-es';
 
-import { Driver, Policy } from '@cache-nest/types';
+import { Driver } from '@cache-nest/types';
 
 import type { BaseDriver } from '@/drivers/base';
 import { MemoryDriver } from '@/drivers/memory';
 import { getApiConfiguration } from '@/setup';
+import { ApiError } from '@/utils/errors';
 import globalLogger from '@/utils/logger';
 
 const apiConfiguration = await getApiConfiguration();
@@ -30,23 +31,15 @@ const elysiaServer = new Elysia()
   .derive(() => ({
     startTime: process.hrtime(),
   }))
-  .use(
-    await autoload({
-      prefix: '/api',
-    }),
-  )
-  .use(
-    cors({
-      origin: apiConfiguration.server.cors.origin,
-      methods: ['POST', 'GET', 'DELETE'],
-    }),
-  )
+  .error({
+    API: ApiError,
+  })
   .onError(({ error, code }) => {
     const spanContext = trace.getActiveSpan()?.spanContext();
     return {
-      name: error.name,
+      name: code,
       message: error.message,
-      code,
+      status: code === 'API' ? error.status : undefined,
       stack: env.NODE_ENV === 'development' ? error.stack : undefined,
       traceId: spanContext ? spanContext.traceId : undefined,
       spanId: spanContext ? spanContext.spanId : undefined,
@@ -69,7 +62,19 @@ const elysiaServer = new Elysia()
         userAgent: headers['user-agent'],
       });
     logger.http(`${request.method} ${path}`, payload);
-  });
+  })
+  .use(
+    cors({
+      origin: apiConfiguration.server.cors.origin,
+      methods: ['POST', 'GET', 'DELETE'],
+    }),
+  )
+  .use(
+    await autoload({
+      prefix: '/api',
+    }),
+  );
+
 if (apiConfiguration.tracing.enabled) elysiaServer.use(opentelemetry());
 if (apiConfiguration.server.enableSwagger)
   elysiaServer.use(
@@ -93,30 +98,13 @@ if (apiConfiguration.server.enableSwagger)
       },
     }),
   );
-elysiaServer
-  .post('/set', async ({ drivers, body }) => {
-    const result = await drivers[Driver.MEMORY].set((body as any).identifier, Policy.LRU, body as any);
-    return { ok: true, result };
-  })
-  .post('/get', async ({ drivers, body, error }) => {
-    const cache = await drivers[Driver.MEMORY].get((body as any).identifier, Policy.LRU);
-    if (cache === null) return error('Not Found');
-    return cache;
-  })
-  .post('/evict', async ({ drivers, body, error }) => {
-    await drivers[Driver.MEMORY].invalidate((body as any).identifier, Policy.LRU);
-    return error('No Content');
-  })
-  .get('/usage', async ({ drivers }) => {
-    return drivers[Driver.MEMORY].resourceUsage();
-  })
-  .listen(
-    {
-      port: apiConfiguration.server.port,
-      hostname: apiConfiguration.server.host,
-    },
-    (bunServer) => {
-      globalLogger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
-    },
-  );
+elysiaServer.listen(
+  {
+    port: apiConfiguration.server.port,
+    hostname: apiConfiguration.server.host,
+  },
+  (bunServer) => {
+    globalLogger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
+  },
+);
 export type App = typeof elysiaServer;
