@@ -5,7 +5,14 @@ import { isNumber, lowerCase, parseInt } from 'lodash-es';
 import os from 'os';
 import path from 'path';
 
-import { Driver, Policy, type Cache, type DriverResourceUsage, type Identifier } from '@cache-nest/types';
+import {
+  Driver,
+  Policy,
+  type Cache,
+  type DeepPartial,
+  type DriverResourceUsage,
+  type Identifier,
+} from '@cache-nest/types';
 
 import { BaseDriver } from '@/drivers/base';
 import type { BasePolicy } from '@/policies/base';
@@ -25,7 +32,12 @@ import {
 } from '@/utils/opentelemetry';
 
 type Snapshot = {
-  [K in Policy]: Map<string, Cache<unknown>>;
+  caches: {
+    [K in Policy]: Map<string, Cache<unknown>>;
+  };
+  policies: {
+    [K in Policy]: unknown;
+  };
 };
 
 export class MemoryDriver extends BaseDriver {
@@ -150,7 +162,7 @@ export class MemoryDriver extends BaseDriver {
         }
 
         const cache = this._policies[policy].generateCache<T>(identifier, partialCache);
-        await this._ensureCacheSizeLimit(policy, cache);
+        this._ensureCacheSizeLimit(policy, cache);
         this._policies[policy].track(hash);
         this._caches[policy].set(hash, cache);
 
@@ -410,11 +422,13 @@ export class MemoryDriver extends BaseDriver {
                 return;
               }
 
-              const caches = decode(snapshotFile, { extensionCodec }) as Snapshot;
+              const snapshot = decode(snapshotFile, { extensionCodec }) as Snapshot;
 
-              for (const policy in caches) {
-                for (const hash of caches[policy as Policy].keys()) {
-                  const cache = caches[policy as Policy].get(hash);
+              for (const policy in snapshot.caches) {
+                const validHashes = new Set<string>();
+
+                for (const hash of snapshot.caches[policy as Policy].keys()) {
+                  const cache = snapshot.caches[policy as Policy].get(hash);
                   if (cache === undefined) continue;
 
                   if (cache.options.ttl && Date.now() > cache.ctime + cache.options.ttl) {
@@ -424,6 +438,7 @@ export class MemoryDriver extends BaseDriver {
 
                   this._logger.verbose(`Recovering cache ${hash}`);
                   this._caches[policy as Policy].set(hash, cache);
+                  validHashes.add(hash);
                   recovered.total += 1;
                   recovered[policy as Policy] += 1;
 
@@ -443,6 +458,8 @@ export class MemoryDriver extends BaseDriver {
                       });
                   }
                 }
+
+                this._policies[policy as Policy].applySnapshot(validHashes, snapshot.policies[policy as Policy]);
               }
             } catch (err) {
               this._logger.error(`Failed to apply snapshot file ${absolutePath}: `, err);
@@ -475,7 +492,16 @@ export class MemoryDriver extends BaseDriver {
             async (snapshotSpan) => {
               try {
                 this._logger.info('Creating new snapshot of caches');
-                const encoded = encode(this._caches, { extensionCodec });
+                const snapshot: DeepPartial<Snapshot> = {
+                  caches: this._caches,
+                  policies: {},
+                };
+
+                Object.keys(this._policies).forEach((policy) => {
+                  snapshot.policies![policy as Policy] = this._policies[policy as Policy].getSnapshot();
+                });
+
+                const encoded = encode(snapshot, { extensionCodec });
                 await fse.writeFile(absolutePath, encoded);
               } catch (err) {
                 this._logger.error(`Failed to update snapshot file ${absolutePath}: `, err);
