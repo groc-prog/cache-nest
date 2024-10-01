@@ -62,6 +62,22 @@ export abstract class BasePolicy extends EventEmitter {
    */
   abstract evict(): string | null;
 
+  /**
+   * Creates a snapshot of the current state of the policy.
+   * @abstract
+   * @returns {unknown} A snapshot of the state which is serializable with
+   *  {@link https://github.com/msgpack/msgpack-javascript|msgpack on Github}.
+   */
+  abstract getSnapshot(): unknown;
+
+  /**
+   * Applies state from an existing snapshot.
+   * @abstract
+   * @param {Set<string>} hashes - The hashes still valid from the last snapshot.
+   * @param {unknown} snapshot - The decoded snapshot.
+   */
+  abstract applySnapshot(hashes: Set<string>, snapshot: unknown): void;
+
   emit<T extends keyof Events>(event: T, ...args: Parameters<Events[T]>) {
     return super.emit(event, ...args);
   }
@@ -218,7 +234,20 @@ export abstract class BasePolicy extends EventEmitter {
    * @returns {string} The generated hash.
    */
   generateHash(identifier: Identifier, isCacheHash: boolean = true): string {
-    this._logger.debug(`Generating hash for ${isCacheHash ? 'cache' : 'invalidator'}`);
-    return `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
+    return tracer.startActiveSpan(
+      'GenerateHash',
+      {
+        attributes: {
+          'hash.kind': isCacheHash ? 'cache' : 'invalidation',
+        },
+      },
+      (span) => {
+        this._logger.debug(`Generating hash for ${isCacheHash ? 'cache' : 'invalidator'}`);
+        const hash = `${isCacheHash ? 'c' : 'i'}.${objectHash(identifier)}`;
+
+        span.end();
+        return hash;
+      },
+    );
   }
 }

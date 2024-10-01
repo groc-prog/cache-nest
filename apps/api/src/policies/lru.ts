@@ -19,6 +19,12 @@ class Node {
   }
 }
 
+interface LRUSnapshot {
+  mostRecentlyUsed: Node | null;
+  leastRecentlyUsed: Node | null;
+  keyMap: Map<string, Node>;
+}
+
 export class LRUPolicy extends BasePolicy {
   private _mostRecentlyUsed: Node | null = null;
 
@@ -51,6 +57,12 @@ export class LRUPolicy extends BasePolicy {
         },
       },
       (span) => {
+        if (this._cacheKeyMap.has(hash)) {
+          this._logger.warn(`Node ${hash} is already being tracked`);
+          span.end();
+          return;
+        }
+
         this._logger.verbose(`Tracking new cache ${hash}`);
 
         // Update most/least recently used nodes and hash map
@@ -88,7 +100,7 @@ export class LRUPolicy extends BasePolicy {
         this._logger.verbose(`Stop tracking node ${hash}`);
 
         // Shift all nodes connected to the node with the given hash
-        const node = new Node(hash);
+        const node = this._cacheKeyMap.get(hash);
         if (node === undefined) {
           this._logger.warn(`Node ${hash} is not being tracked, can not stop tracking`);
           span.end();
@@ -99,6 +111,7 @@ export class LRUPolicy extends BasePolicy {
         if (this._mostRecentlyUsed?.key === node.key) this._mostRecentlyUsed = node.prev;
         if (node.prev) node.prev.next = node.next;
         if (node.next) node.next.prev = node.prev;
+        this._cacheKeyMap.delete(hash);
         this.clearTTL(node.key);
 
         span.end();
@@ -188,6 +201,55 @@ export class LRUPolicy extends BasePolicy {
         this._leastRecentlyUsed = newLeastRecentlyUsedNode;
         span.end();
         return hashToEvict;
+      },
+    );
+  }
+
+  getSnapshot(): unknown {
+    return tracer.startActiveSpan(
+      'GetSnapshot',
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': this.policy,
+        },
+      },
+      (span) => {
+        this._logger.verbose(`Generating ${this.policy} snapshot`);
+        const snapshot = {
+          mostRecentlyUsed: this._mostRecentlyUsed,
+          leastRecentlyUsed: this._leastRecentlyUsed,
+          keyMap: this._cacheKeyMap,
+        };
+
+        span.end();
+        return snapshot;
+      },
+    );
+  }
+
+  applySnapshot(hashes: Set<string>, snapshot: unknown): void {
+    tracer.startActiveSpan(
+      'ApplySnapshot',
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': this.policy,
+        },
+      },
+      (span) => {
+        this._logger.info(`Applying ${this.policy} snapshot`);
+        const { mostRecentlyUsed, leastRecentlyUsed, keyMap } = snapshot as LRUSnapshot;
+
+        this._mostRecentlyUsed = mostRecentlyUsed;
+        this._leastRecentlyUsed = leastRecentlyUsed;
+        this._cacheKeyMap = keyMap;
+
+        for (const hash in this._cacheKeyMap) {
+          if (!hashes.has(hash)) this.stopTracking(hash);
+        }
+
+        span.end();
       },
     );
   }
