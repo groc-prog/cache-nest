@@ -32,14 +32,14 @@ const elysiaServer = new Elysia()
     startTime: process.hrtime(),
   }))
   .error({
-    API: ApiError,
+    ApiError,
   })
   .onError(({ error, code }) => {
     const spanContext = trace.getActiveSpan()?.spanContext();
     return {
-      name: code,
       message: error.message,
-      status: code === 'API' ? error.status : undefined,
+      detail: code === 'ApiError' ? error.detail : undefined,
+      status: code === 'ApiError' ? error.status : undefined,
       stack: env.NODE_ENV === 'development' ? error.stack : undefined,
       traceId: spanContext ? spanContext.traceId : undefined,
       spanId: spanContext ? spanContext.spanId : undefined,

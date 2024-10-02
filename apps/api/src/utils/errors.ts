@@ -1,3 +1,5 @@
+import { merge } from 'lodash-es';
+
 export class CacheTooBigError extends Error {
   constructor() {
     super('Cache size exceeds maximum size');
@@ -17,11 +19,24 @@ export class NoCachesToEvictError extends Error {
 }
 
 export class ApiError extends Error {
+  detail?: string;
+
   status: number;
 
-  constructor(message: string = 'Internal server error', status: number = 500) {
-    super(message);
+  constructor(props?: { message?: string; detail?: string; status?: number }) {
+    const mergedProps = merge(
+      {},
+      {
+        message: 'Internal server error',
+        detail: undefined,
+        status: 500,
+      },
+      props,
+    );
 
-    this.status = status;
+    super(mergedProps.detail);
+
+    this.status = mergedProps.status;
+    this.detail = mergedProps.detail;
   }
 }

@@ -1,4 +1,5 @@
 import type { App } from '@/index';
+import { ApiError } from '@/utils/errors';
 import { tracer } from '@/utils/opentelemetry';
 
 /**
@@ -11,7 +12,7 @@ import { tracer } from '@/utils/opentelemetry';
  * @returns {App} The app with the plugin applied to it.
  */
 export const authenticationPlugin = (app: App): App =>
-  app.onBeforeHandle(({ headers, error, configuration, logger }) => {
+  app.onBeforeHandle(({ headers, configuration, logger }) => {
     if (!configuration.server.authentication.enabled) return;
 
     tracer.startActiveSpan('ApiTokenAuthentication', (span) => {
@@ -19,18 +20,20 @@ export const authenticationPlugin = (app: App): App =>
       const authHeader = headers.authorization?.split(' ');
       if (!authHeader) {
         span.end();
-        return error(401, {
+        throw new ApiError({
           message: 'Missing authorization',
-          cause: 'A API token is required to access any content.',
+          detail: 'A API token is required to access any content.',
+          status: 401,
         });
       }
 
       const apiToken = authHeader[1];
       if (!apiToken || !configuration.server.authentication.apiKeys.includes(apiToken)) {
         span.end();
-        return error(401, {
+        throw new ApiError({
           message: 'Invalid API token',
-          cause: 'The provided API token is invalid.',
+          detail: 'The provided API token is invalid',
+          status: 401,
         });
       }
 

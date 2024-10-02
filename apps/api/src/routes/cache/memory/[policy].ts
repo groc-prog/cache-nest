@@ -3,11 +3,12 @@ import { t } from 'elysia';
 import { Driver, Policy } from '@cache-nest/types';
 
 import type { App } from '@/index';
+import { authenticationPlugin } from '@/plugins/authentication';
 import { ApiError } from '@/utils/errors';
 import { ErrorResponseType, IdentifierType } from '@/utils/swagger';
 
 export default (app: App) =>
-  app.post(
+  app.use(authenticationPlugin).post(
     '',
     async ({ body, params, query, drivers, logger, set }) => {
       try {
@@ -23,7 +24,13 @@ export default (app: App) =>
         );
 
         if (query.force && !hasBeenSet) throw new ApiError();
-        if (!query.force && !hasBeenSet) throw new ApiError('Cache already exists', 409);
+        if (!query.force && !hasBeenSet)
+          throw new ApiError({
+            message: 'Cache already exists',
+            detail:
+              'A cache with the provided identifier already exists. If you want to overwrite the existing cache, you have to pass the force parameter as true.',
+            status: 409,
+          });
 
         set.status = 201;
         return null;
@@ -47,10 +54,12 @@ export default (app: App) =>
         }),
       }),
       query: t.Object({
-        force: t.Boolean({
-          default: false,
-          description: 'Whether to overwrite existing entries.',
-        }),
+        force: t.Optional(
+          t.Boolean({
+            default: false,
+            description: 'Whether to overwrite existing entries.',
+          }),
+        ),
       }),
       body: t.Object({
         identifier: t.Recursive(IdentifierType, {
