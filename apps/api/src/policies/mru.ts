@@ -26,13 +26,13 @@ interface MRUSnapshot {
 }
 
 export class MRUPolicy extends BasePolicy {
-  private _mostRecentlyUsed: MRUNode | null = null;
+  protected _mostRecentlyUsed: MRUNode | null = null;
 
-  private _leastRecentlyUsed: MRUNode | null = null;
+  protected _leastRecentlyUsed: MRUNode | null = null;
 
-  private _cacheKeyMap: Map<string, MRUNode> = new Map();
+  protected _cacheKeyMap: Map<string, MRUNode> = new Map();
 
-  private _keyOrder: string[] = [];
+  protected _keyOrder: string[] = [];
 
   constructor(driver: Driver) {
     super(Policy.MRU, driver);
@@ -173,7 +173,7 @@ export class MRUPolicy extends BasePolicy {
 
         const hashToEvict = this._mostRecentlyUsed.key;
         this._logger.verbose(`Stopping tracking of hash ${hashToEvict}`);
-        const newMostRecentlyUsedNode = this._mostRecentlyUsed.next;
+        const newMostRecentlyUsedNode = this._mostRecentlyUsed.prev;
 
         this._logger.debug('Deleting hash and cleaning up TTL and invalidation identifiers');
         this.clearTTL(hashToEvict);
@@ -182,7 +182,7 @@ export class MRUPolicy extends BasePolicy {
 
         if (newMostRecentlyUsedNode !== null) {
           this._logger.debug('Updating least recently used hash');
-          newMostRecentlyUsedNode.prev = null;
+          newMostRecentlyUsedNode.next = null;
         }
         this._mostRecentlyUsed = newMostRecentlyUsedNode;
         span.end();
