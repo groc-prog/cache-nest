@@ -1,8 +1,13 @@
 import type { TThis } from '@sinclair/typebox';
 import { t } from 'elysia';
 
-export const IdentifierType = (identifier: TThis) =>
-  t.Union([t.String(), t.Number(), t.Boolean(), t.Array(identifier), t.Record(t.String(), identifier)]);
+export const IdentifierType = t.Recursive(
+  (identifier: TThis) =>
+    t.Union([t.String(), t.Number(), t.Boolean(), t.Array(identifier), t.Record(t.String(), identifier)]),
+  {
+    description: 'The cache identifier under which it will be registered.',
+  },
+);
 
 export const ErrorResponseType = t.Object({
   message: t.String({

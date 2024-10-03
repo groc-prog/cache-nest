@@ -62,9 +62,7 @@ export default (app: App) =>
         ),
       }),
       body: t.Object({
-        identifier: t.Recursive(IdentifierType, {
-          description: 'The cache identifier under which it will be registered.',
-        }),
+        identifier: IdentifierType,
         data: t.Any({
           description: 'The data to cache.',
         }),
@@ -84,7 +82,7 @@ export default (app: App) =>
               }),
             ),
             invalidatedBy: t.Optional(
-              t.Array(t.Recursive(IdentifierType), {
+              t.Array(IdentifierType, {
                 description: 'A list of identifiers which can be used to manually invalidate the cache.',
               }),
             ),
@@ -94,7 +92,6 @@ export default (app: App) =>
       response: {
         201: t.Null(),
         409: ErrorResponseType,
-        500: ErrorResponseType,
       },
     },
   );
