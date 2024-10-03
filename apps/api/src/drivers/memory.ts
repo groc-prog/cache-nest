@@ -56,7 +56,10 @@ export class MemoryDriver extends BaseDriver {
     [Policy.LRU]: new Map(),
   };
 
-  private _mutex = new Mutex();
+  // @ts-expect-error
+  private _mutexes: Record<Policy, Mutex> = {
+    [Policy.LRU]: new Mutex(),
+  };
 
   private _config: ApiConfiguration['drivers']['memory'];
 
@@ -122,7 +125,7 @@ export class MemoryDriver extends BaseDriver {
         }
 
         this._logger.info(`Cache hit for ${hash} in ${policy} cache`);
-        const updatedCache = await this._mutex.runExclusive(() => {
+        const updatedCache = await this._mutexes[policy].runExclusive(() => {
           this._policies[policy].hit(hash);
 
           const updated: Cache<T> = merge({}, cache, {
@@ -174,20 +177,23 @@ export class MemoryDriver extends BaseDriver {
         const cache = this._policies[policy].generateCache<T>(identifier, partialCache);
         this._ensureCacheSizeLimit(policy, cache);
         this._policies[policy].track(hash);
-        this._caches[policy].set(hash, cache);
 
-        if (cache.options.invalidatedBy.length > 0) {
-          this._logger.verbose(
-            `Registering ${cache.options.invalidatedBy.length} invalidation identifiers for ${hash}`,
-          );
-          cache.options.invalidatedBy
-            .map((invalidationIdentifier) => this._policies[policy].generateHash(invalidationIdentifier, false))
-            .forEach((invalidationHash) => {
-              if (!this._invalidations[policy].has(invalidationHash))
-                this._invalidations[policy].set(invalidationHash, new Set());
-              this._invalidations[policy].get(invalidationHash)?.add(hash);
-            });
-        }
+        await this._mutexes[policy].runExclusive(() => {
+          this._caches[policy].set(hash, cache);
+
+          if (cache.options.invalidatedBy.length > 0) {
+            this._logger.verbose(
+              `Registering ${cache.options.invalidatedBy.length} invalidation identifiers for ${hash}`,
+            );
+            cache.options.invalidatedBy
+              .map((invalidationIdentifier) => this._policies[policy].generateHash(invalidationIdentifier, false))
+              .forEach((invalidationHash) => {
+                if (!this._invalidations[policy].has(invalidationHash))
+                  this._invalidations[policy].set(invalidationHash, new Set());
+                this._invalidations[policy].get(invalidationHash)?.add(hash);
+              });
+          }
+        });
 
         span.end();
         return true;
@@ -195,7 +201,7 @@ export class MemoryDriver extends BaseDriver {
     );
   }
 
-  invalidate(identifiers: Identifier[], policy: Policy): void {
+  async invalidate(identifiers: Identifier[], policy: Policy): Promise<void> {
     tracer.startActiveSpan(
       'InvalidateCaches',
       {
@@ -204,14 +210,14 @@ export class MemoryDriver extends BaseDriver {
           'cache.policy': policy,
         },
       },
-      (span) => {
+      async (span) => {
         this._logger.info(`Evicting all caches affected by ${identifiers.length} invalidation identifiers`);
 
         for (const identifier of identifiers) {
-          tracer.startActiveSpan(
+          await tracer.startActiveSpan(
             'InvalidateCache',
             { attributes: { 'cache.driver': this.driver, 'cache.policy': policy } },
-            (invalidateCacheSpan) => {
+            async (invalidateCacheSpan) => {
               const hash = this._policies[policy].generateHash(identifier, false);
               const affectedCaches = this._invalidations[policy].get(hash);
 
@@ -224,24 +230,26 @@ export class MemoryDriver extends BaseDriver {
                 'invalidator.hash': hash,
               });
 
-              affectedCaches?.forEach((cacheHash) => {
-                this._logger.debug(`Evicting cache ${cacheHash}`);
-                this._policies[policy].stopTracking(cacheHash);
-                this._caches[policy].delete(cacheHash);
+              await this._mutexes[policy].runExclusive(() => {
+                affectedCaches?.forEach((cacheHash) => {
+                  this._logger.debug(`Evicting cache ${cacheHash}`);
+                  this._policies[policy].stopTracking(cacheHash);
+                  this._caches[policy].delete(cacheHash);
+                });
 
-                totalEvictionsCounter.add(1, {
-                  'cache.driver': this.driver,
-                  'cache.policy': policy,
-                  'cache.hash': hash,
-                });
-                invalidationEvictionsCounter.add(1, {
-                  'cache.driver': this.driver,
-                  'cache.policy': policy,
-                  'cache.hash': hash,
-                });
+                this._invalidations[policy].delete(hash);
               });
 
-              this._invalidations[policy].delete(hash);
+              totalEvictionsCounter.add(1, {
+                'cache.driver': this.driver,
+                'cache.policy': policy,
+                'cache.hash': hash,
+              });
+              invalidationEvictionsCounter.add(1, {
+                'cache.driver': this.driver,
+                'cache.policy': policy,
+                'cache.hash': hash,
+              });
               invalidateCacheSpan.end();
             },
           );
@@ -284,7 +292,7 @@ export class MemoryDriver extends BaseDriver {
     }, 0);
   }
 
-  protected _ensureCacheSizeLimit<T>(policy: Policy, cache: Cache<T>): void {
+  protected async _ensureCacheSizeLimit<T>(policy: Policy, cache: Cache<T>): Promise<void> {
     tracer.startActiveSpan(
       'EnsureCacheSizeLimit',
       {
@@ -293,7 +301,7 @@ export class MemoryDriver extends BaseDriver {
           'cache.policy': policy,
         },
       },
-      (span) => {
+      async (span) => {
         this._logger.verbose('Ensuring cache size limits');
 
         const cacheSize = Buffer.byteLength(JSON.stringify(cache));
@@ -306,29 +314,33 @@ export class MemoryDriver extends BaseDriver {
           return;
         }
 
-        // Try to evict a cache from the defined policy
-        let hashToEvict: string | null = null;
-
         this._logger.info('Evicting caches to ensure cache size limits');
-        while (this._getCurrentCacheSize() > currentMaxSize) {
-          hashToEvict = this._policies[policy].evict();
+        let hashToEvict = await this._mutexes[policy].runExclusive(() => {
+          let hash: string | null = null;
 
-          if (hashToEvict === null) break;
-          else {
-            this._logger.verbose(`Evicting cache ${hashToEvict} from policy ${policy}`);
-            this._caches[policy].delete(hashToEvict);
-            totalEvictionsCounter.add(1, {
-              'cache.driver': this.driver,
-              'cache.policy': policy,
-              'cache.hash': hashToEvict,
-            });
-            sizeLimitEvictionsCounter.add(1, {
-              'cache.driver': this.driver,
-              'cache.policy': policy,
-              'cache.hash': hashToEvict,
-            });
+          while (this._getCurrentCacheSize() > currentMaxSize) {
+            hash = this._policies[policy].evict();
+
+            if (hash === null) break;
+            else {
+              this._logger.verbose(`Evicting cache ${hash} from policy ${policy}`);
+
+              this._caches[policy].delete(hash);
+              totalEvictionsCounter.add(1, {
+                'cache.driver': this.driver,
+                'cache.policy': policy,
+                'cache.hash': hash,
+              });
+              sizeLimitEvictionsCounter.add(1, {
+                'cache.driver': this.driver,
+                'cache.policy': policy,
+                'cache.hash': hash,
+              });
+            }
           }
-        }
+
+          return hash;
+        });
 
         if (hashToEvict !== null) return;
         if (hashToEvict === null && !this._config.evictFromOthers) {
@@ -341,25 +353,31 @@ export class MemoryDriver extends BaseDriver {
         const remainingPolicies = Object.keys(this._policies).filter((policyToCheck) => policyToCheck !== policy);
         for (const remainingPolicy in remainingPolicies) {
           this._logger.debug(`Attempting to evict caches from ${remainingPolicy} policy`);
-          while (this._getCurrentCacheSize() > currentMaxSize) {
-            hashToEvict = this._policies[remainingPolicy as Policy].evict();
+          hashToEvict = await this._mutexes[remainingPolicy as Policy].runExclusive(() => {
+            let hash: string | null = null;
 
-            if (hashToEvict === null) break;
-            else {
-              this._logger.verbose(`Evicting cache ${hashToEvict} from policy ${remainingPolicies}`);
-              this._caches[remainingPolicy as Policy].delete(hashToEvict);
-              totalEvictionsCounter.add(1, {
-                'cache.driver': this.driver,
-                'cache.policy': remainingPolicy,
-                'cache.hash': hashToEvict,
-              });
-              sizeLimitEvictionsCounter.add(1, {
-                'cache.driver': this.driver,
-                'cache.policy': remainingPolicy,
-                'cache.hash': hashToEvict,
-              });
+            while (this._getCurrentCacheSize() > currentMaxSize) {
+              hash = this._policies[remainingPolicy as Policy].evict();
+
+              if (hash === null) break;
+              else {
+                this._logger.verbose(`Evicting cache ${hash} from policy ${remainingPolicies}`);
+                this._caches[remainingPolicy as Policy].delete(hash);
+                totalEvictionsCounter.add(1, {
+                  'cache.driver': this.driver,
+                  'cache.policy': remainingPolicy,
+                  'cache.hash': hash,
+                });
+                sizeLimitEvictionsCounter.add(1, {
+                  'cache.driver': this.driver,
+                  'cache.policy': remainingPolicy,
+                  'cache.hash': hash,
+                });
+              }
             }
-          }
+
+            return hash;
+          });
 
           if (hashToEvict !== null) {
             span.end();
