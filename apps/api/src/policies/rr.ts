@@ -10,13 +10,13 @@ interface RRSnapshot {
 }
 
 export class RRPolicy extends BasePolicy {
-  private _cacheKeys: Set<string> = new Set<string>();
+  protected _cacheKeys: Set<string> = new Set<string>();
 
   constructor(driver: Driver) {
     super(Policy.RR, driver);
 
     this.on('ttlExpired', (hash) => {
-      this._cacheKeys.delete(hash);
+      this.stopTracking(hash);
     });
   }
 
@@ -121,7 +121,7 @@ export class RRPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.info(`Applying ${this.policy} snapshot`);
-        for (const key in cacheKeys.keys()) {
+        for (const key of cacheKeys.keys()) {
           if (hashes.has(key)) this._cacheKeys.add(key);
         }
 

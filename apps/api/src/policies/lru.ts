@@ -34,13 +34,7 @@ export class LRUPolicy extends BasePolicy {
     super(Policy.LRU, driver);
 
     this.on('ttlExpired', (hash) => {
-      const node = this._cacheKeyMap.get(hash);
-      if (node === undefined) return;
-
-      if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
-      if (this._mostRecentlyUsed?.key === node.key) this._mostRecentlyUsed = node.prev;
-      if (node.prev) node.prev.next = node.next;
-      if (node.next) node.next.prev = node.prev;
+      this.stopTracking(hash);
     });
   }
 
