@@ -18,9 +18,10 @@ import { BaseDriver } from '@/drivers/base';
 import type { BasePolicy } from '@/policies/base';
 import { LRUPolicy } from '@/policies/lru';
 import { MRUPolicy } from '@/policies/mru';
+import { RRPolicy } from '@/policies/rr';
 import type { CreateCache } from '@/types/cache';
 import type { ApiConfiguration } from '@/types/configuration';
-import { CacheTooBigError, NoCachesToEvictError } from '@/utils/errors';
+import { ApiError } from '@/utils/errors';
 import { extensionCodec } from '@/utils/msgpack';
 import {
   cacheHitsCounter,
@@ -53,7 +54,7 @@ export class MemoryDriver extends BaseDriver {
   private _policies: Record<Policy, BasePolicy> = {
     [Policy.LRU]: new LRUPolicy(Driver.MEMORY),
     [Policy.MRU]: new MRUPolicy(Driver.MEMORY),
-    [Policy.RR]: new MRUPolicy(Driver.MEMORY),
+    [Policy.RR]: new RRPolicy(Driver.MEMORY),
   };
 
   // @ts-expect-error
@@ -317,7 +318,8 @@ export class MemoryDriver extends BaseDriver {
         this._logger.verbose('Ensuring cache size limits');
 
         const cacheSize = Buffer.byteLength(JSON.stringify(cache));
-        if (cacheSize > (this._config.maxSize as number)) throw new CacheTooBigError();
+        if (cacheSize > (this._config.maxSize as number))
+          throw new ApiError({ message: 'Cache too big', detail: 'Cache size exceeds maximum', status: 409 });
 
         const currentMaxSize = (this._config.maxSize as number) - cacheSize;
         if (this._getCurrentCacheSize() <= currentMaxSize) {
@@ -357,7 +359,12 @@ export class MemoryDriver extends BaseDriver {
         if (hashToEvict !== null) return;
         if (hashToEvict === null && !this._config.evictFromOthers) {
           this._logger.warn(`Policy ${policy} can not evict any caches`);
-          throw new NoCachesToEvictError();
+          throw new ApiError({
+            message: 'No caches to evict',
+            detail:
+              'Can not evict any more caches for new cache. You can change this behavior by enabling the `evictFromOthers` option',
+            status: 409,
+          });
         }
 
         // If all caches from policy have been evicted, but the cache still does not fit, we attempt
@@ -398,7 +405,13 @@ export class MemoryDriver extends BaseDriver {
         }
 
         this._logger.error(`Failed to evict any caches from all policies, size limit check failed`);
-        if (hashToEvict === null) throw new NoCachesToEvictError();
+        if (hashToEvict === null)
+          throw new ApiError({
+            message: 'No caches to evict',
+            detail:
+              'Can not evict any more caches for new cache. You can change this behavior by enabling the `evictFromOthers` option',
+            status: 409,
+          });
       },
     );
   }
