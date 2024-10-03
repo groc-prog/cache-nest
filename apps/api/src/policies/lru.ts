@@ -3,14 +3,18 @@ import { Driver, Policy } from '@cache-nest/types';
 import { BasePolicy } from '@/policies/base';
 import { tracer } from '@/utils/opentelemetry';
 
-class Node {
-  prev: Node | null;
+/**
+ * @private
+ * Internal node class used by LRU policy. Should not be used outside of tests.
+ */
+export class LRUNode {
+  prev: LRUNode | null;
 
-  next: Node | null;
+  next: LRUNode | null;
 
   key: string;
 
-  constructor(key: string, prev: Node | null = null, next: Node | null = null) {
+  constructor(key: string, prev: LRUNode | null = null, next: LRUNode | null = null) {
     this.key = key;
     this.prev = prev;
     this.next = next;
@@ -22,13 +26,13 @@ interface LRUSnapshot {
 }
 
 export class LRUPolicy extends BasePolicy {
-  private _mostRecentlyUsed: Node | null = null;
+  protected _mostRecentlyUsed: LRUNode | null = null;
 
-  private _leastRecentlyUsed: Node | null = null;
+  protected _leastRecentlyUsed: LRUNode | null = null;
 
-  private _cacheKeyMap: Map<string, Node> = new Map();
+  protected _cacheKeyMap: Map<string, LRUNode> = new Map();
 
-  private _keyOrder: string[] = [];
+  protected _keyOrder: string[] = [];
 
   constructor(driver: Driver) {
     super(Policy.LRU, driver);
@@ -56,7 +60,7 @@ export class LRUPolicy extends BasePolicy {
         }
 
         this._logger.verbose(`Tracking new hash ${hash}`);
-        const node = new Node(hash);
+        const node = new LRUNode(hash);
 
         this._logger.debug('Updating most recently used hash');
         if (this._mostRecentlyUsed !== null) {
@@ -140,12 +144,8 @@ export class LRUPolicy extends BasePolicy {
 
           if (this._keyOrder.length > 1) {
             const index = this._keyOrder.findIndex((key) => key === node.key);
-            const swap = this._keyOrder[index];
-
-            if (swap !== undefined) {
-              this._keyOrder[index] = this._keyOrder[index + 1] as string;
-              this._keyOrder[index + 1] = swap;
-            }
+            this._keyOrder.splice(index, 1);
+            this._keyOrder.push(hash);
           }
         }
 
@@ -228,7 +228,7 @@ export class LRUPolicy extends BasePolicy {
         this._keyOrder.forEach((key, index) => {
           if (!hashes.has(key)) return;
 
-          const node = new Node(key);
+          const node = new LRUNode(key);
           const prevKey = this._keyOrder[index - 1];
 
           if (this._leastRecentlyUsed === null && prevKey === undefined) {

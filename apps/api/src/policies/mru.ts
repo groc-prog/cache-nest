@@ -3,14 +3,18 @@ import { Driver, Policy } from '@cache-nest/types';
 import { BasePolicy } from '@/policies/base';
 import { tracer } from '@/utils/opentelemetry';
 
-class Node {
-  prev: Node | null;
+/**
+ * @private
+ * Internal node class used by MRU policy. Should not be used outside of tests.
+ */
+export class MRUNode {
+  prev: MRUNode | null;
 
-  next: Node | null;
+  next: MRUNode | null;
 
   key: string;
 
-  constructor(key: string, prev: Node | null = null, next: Node | null = null) {
+  constructor(key: string, prev: MRUNode | null = null, next: MRUNode | null = null) {
     this.key = key;
     this.prev = prev;
     this.next = next;
@@ -22,11 +26,11 @@ interface MRUSnapshot {
 }
 
 export class MRUPolicy extends BasePolicy {
-  private _mostRecentlyUsed: Node | null = null;
+  private _mostRecentlyUsed: MRUNode | null = null;
 
-  private _leastRecentlyUsed: Node | null = null;
+  private _leastRecentlyUsed: MRUNode | null = null;
 
-  private _cacheKeyMap: Map<string, Node> = new Map();
+  private _cacheKeyMap: Map<string, MRUNode> = new Map();
 
   private _keyOrder: string[] = [];
 
@@ -56,7 +60,7 @@ export class MRUPolicy extends BasePolicy {
         }
 
         this._logger.verbose(`Tracking new cache ${hash}`);
-        const node = new Node(hash);
+        const node = new MRUNode(hash);
 
         this._logger.debug('Updating most recently used hash');
         if (this._mostRecentlyUsed !== null) {
@@ -140,12 +144,8 @@ export class MRUPolicy extends BasePolicy {
 
           if (this._keyOrder.length > 1) {
             const index = this._keyOrder.findIndex((key) => key === node.key);
-            const swap = this._keyOrder[index];
-
-            if (swap !== undefined) {
-              this._keyOrder[index] = this._keyOrder[index + 1] as string;
-              this._keyOrder[index + 1] = swap;
-            }
+            this._keyOrder.splice(index, 1);
+            this._keyOrder.push(hash);
           }
         }
 
@@ -228,7 +228,7 @@ export class MRUPolicy extends BasePolicy {
         this._keyOrder.forEach((key, index) => {
           if (!hashes.has(key)) return;
 
-          const node = new Node(key);
+          const node = new MRUNode(key);
           const prevKey = this._keyOrder[index - 1];
 
           if (this._leastRecentlyUsed === null && prevKey === undefined) {

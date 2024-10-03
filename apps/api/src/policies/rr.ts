@@ -63,6 +63,7 @@ export class RRPolicy extends BasePolicy {
 
         this._logger.verbose(`Stop tracking hash ${hash}`);
         this._cacheKeys.delete(hash);
+        this.clearTTL(hash);
         span.end();
       },
     );
@@ -82,6 +83,7 @@ export class RRPolicy extends BasePolicy {
       },
       (span) => {
         const hash = sample([...this._cacheKeys]);
+        if (hash) this.clearTTL(hash);
 
         span.end();
         return hash || null;
