@@ -1,7 +1,7 @@
 import { encode, decode } from '@msgpack/msgpack';
 import { Mutex } from 'async-mutex';
 import fse from 'fs-extra';
-import { isNumber, lowerCase, merge, parseInt } from 'lodash-es';
+import { capitalize, isNumber, lowerCase, merge, parseInt } from 'lodash-es';
 import os from 'os';
 import path from 'path';
 
@@ -17,6 +17,7 @@ import {
 import { BaseDriver } from '@/drivers/base';
 import type { BasePolicy } from '@/policies/base';
 import { LRUPolicy } from '@/policies/lru';
+import { MRUPolicy } from '@/policies/mru';
 import type { CreateCache } from '@/types/cache';
 import type { ApiConfiguration } from '@/types/configuration';
 import { CacheTooBigError, NoCachesToEvictError } from '@/utils/errors';
@@ -44,21 +45,25 @@ export class MemoryDriver extends BaseDriver {
   // @ts-expect-error
   private _caches: Record<Policy, Map<string, Cache>> = {
     [Policy.LRU]: new Map(),
+    [Policy.MRU]: new Map(),
   };
 
   // @ts-expect-error
   private _policies: Record<Policy, BasePolicy> = {
     [Policy.LRU]: new LRUPolicy(Driver.MEMORY),
+    [Policy.MRU]: new MRUPolicy(Driver.MEMORY),
   };
 
   // @ts-expect-error
   private _invalidations: Record<Policy, Map<string, Set<string>>> = {
     [Policy.LRU]: new Map(),
+    [Policy.MRU]: new Map(),
   };
 
   // @ts-expect-error
   private _mutexes: Record<Policy, Mutex> = {
     [Policy.LRU]: new Mutex(),
+    [Policy.MRU]: new Mutex(),
   };
 
   private _config: ApiConfiguration['drivers']['memory'];
@@ -94,7 +99,7 @@ export class MemoryDriver extends BaseDriver {
 
         if (this._config.recovery.enabled) await this._initSnapshots();
 
-        this._logger.info(`${this.driver} driver initialized`);
+        this._logger.info(`${capitalize(this.driver)} driver initialized`);
         span.end();
       },
     );
