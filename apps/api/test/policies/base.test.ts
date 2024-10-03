@@ -1,22 +1,11 @@
-import { describe, it, expect, beforeEach, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, spyOn, jest } from 'bun:test';
 
-import { Driver, Policy, type Cache, type Identifier } from '@cache-nest/types';
+import { Driver, Policy, type Identifier } from '@cache-nest/types';
 
 import { BasePolicy } from '@/policies/base';
 
+// @ts-expect-error
 class TestBasePolicy extends BasePolicy {
-  track(): void {}
-
-  stopTracking(): void {}
-
-  hit<T>(): Cache<T> {
-    return null as unknown as Cache<T>;
-  }
-
-  evict(): string | null {
-    return null;
-  }
-
   get logger() {
     return this._logger;
   }
@@ -36,6 +25,10 @@ class TestBasePolicy extends BasePolicy {
 describe('BasePolicy', () => {
   const IDENTIFIER: Identifier = { foo: 'bar', foz: 'baz' };
   const HASH = '522179bc3c5b5988a9fc4f22bfd230205f86adaa';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   describe('constructor', () => {
     it('should set the policy and driver in the constructor', () => {
