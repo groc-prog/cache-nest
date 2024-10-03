@@ -267,21 +267,24 @@ export class MemoryDriver extends BaseDriver {
 
   resourceUsage(): DriverResourceUsage {
     return tracer.startActiveSpan('ResourceUsage', { attributes: { 'cache.driver': this.driver } }, (span) => {
+      const totalRelative = (this._getCurrentCacheSize() * 100) / (this._config.maxSize as number);
+
       const resourceUsage = Object.keys(this._caches).reduce(
         (obj, policy) => {
           const size = Buffer.byteLength(JSON.stringify([...this._caches[policy as Policy].values()]));
           const relativeSize = (size * 100) / (this._config.maxSize as number);
 
           obj[lowerCase(policy) as Lowercase<Policy>] = {
-            cacheCount: this._caches[policy as Policy].size,
-            relativeSize: parseFloat(relativeSize.toFixed(6)),
-            size,
+            count: this._caches[policy as Policy].size,
+            relative: parseFloat(relativeSize.toFixed(6)),
+            total: size,
           };
 
           return obj;
         },
         {
           total: this._getCurrentCacheSize(),
+          relative: parseFloat(totalRelative.toFixed(6)),
         } as DriverResourceUsage,
       );
 

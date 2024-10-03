@@ -5,10 +5,11 @@ import { Policy } from './cache.js';
  */
 export type DriverResourceUsage = {
   -readonly [K in keyof typeof Policy as Lowercase<K>]: {
-    cacheCount: number;
-    relativeSize: number;
-    size: number;
+    count: number;
+    relative: number;
+    total: number;
   };
 } & {
   total: number;
+  relative: number;
 };
