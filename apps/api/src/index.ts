@@ -37,7 +37,7 @@ const elysiaServer = new Elysia()
   .onError(({ error, code }) => {
     const spanContext = trace.getActiveSpan()?.spanContext();
     return {
-      message: error.message,
+      message: code === 'VALIDATION' ? JSON.parse(error.message) : error.message,
       detail: code === 'ApiError' ? error.detail : undefined,
       status: code === 'ApiError' ? error.status : undefined,
       stack: env.NODE_ENV === 'development' ? error.stack : undefined,
