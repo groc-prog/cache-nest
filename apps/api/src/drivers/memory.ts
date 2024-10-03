@@ -46,24 +46,28 @@ export class MemoryDriver extends BaseDriver {
   private _caches: Record<Policy, Map<string, Cache>> = {
     [Policy.LRU]: new Map(),
     [Policy.MRU]: new Map(),
+    [Policy.RR]: new Map(),
   };
 
   // @ts-expect-error
   private _policies: Record<Policy, BasePolicy> = {
     [Policy.LRU]: new LRUPolicy(Driver.MEMORY),
     [Policy.MRU]: new MRUPolicy(Driver.MEMORY),
+    [Policy.RR]: new MRUPolicy(Driver.MEMORY),
   };
 
   // @ts-expect-error
   private _invalidations: Record<Policy, Map<string, Set<string>>> = {
     [Policy.LRU]: new Map(),
     [Policy.MRU]: new Map(),
+    [Policy.RR]: new Map(),
   };
 
   // @ts-expect-error
   private _mutexes: Record<Policy, Mutex> = {
     [Policy.LRU]: new Mutex(),
     [Policy.MRU]: new Mutex(),
+    [Policy.RR]: new Mutex(),
   };
 
   private _config: ApiConfiguration['drivers']['memory'];
@@ -180,7 +184,7 @@ export class MemoryDriver extends BaseDriver {
         }
 
         const cache = this._policies[policy].generateCache<T>(identifier, partialCache);
-        this._ensureCacheSizeLimit(policy, cache);
+        await this._ensureCacheSizeLimit(policy, cache);
         this._policies[policy].track(hash);
 
         await this._mutexes[policy].runExclusive(() => {
@@ -301,7 +305,7 @@ export class MemoryDriver extends BaseDriver {
   }
 
   protected async _ensureCacheSizeLimit<T>(policy: Policy, cache: Cache<T>): Promise<void> {
-    tracer.startActiveSpan(
+    return tracer.startActiveSpan(
       'EnsureCacheSizeLimit',
       {
         attributes: {
@@ -359,7 +363,7 @@ export class MemoryDriver extends BaseDriver {
         // If all caches from policy have been evicted, but the cache still does not fit, we attempt
         // to evict caches from other policies to make space
         const remainingPolicies = Object.keys(this._policies).filter((policyToCheck) => policyToCheck !== policy);
-        for (const remainingPolicy in remainingPolicies) {
+        for (const remainingPolicy of remainingPolicies) {
           this._logger.debug(`Attempting to evict caches from ${remainingPolicy} policy`);
           hashToEvict = await this._mutexes[remainingPolicy as Policy].runExclusive(() => {
             let hash: string | null = null;
@@ -539,6 +543,7 @@ export class MemoryDriver extends BaseDriver {
 
                 const encoded = encode(snapshot, { extensionCodec });
                 await fse.writeFile(absolutePath, encoded);
+                this._logger.info('Snapshot created');
               } catch (err) {
                 this._logger.error(`Failed to update snapshot file ${absolutePath}: `, err);
               }
