@@ -34,7 +34,7 @@ export class ApiError extends Error {
       props,
     );
 
-    super(mergedProps.detail);
+    super(mergedProps.message);
 
     this.status = mergedProps.status;
     this.detail = mergedProps.detail;
