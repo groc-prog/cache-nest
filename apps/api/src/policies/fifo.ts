@@ -1,5 +1,3 @@
-import { sample } from 'lodash-es';
-
 import { Driver, Policy } from '@cache-nest/types';
 
 import { BasePolicy } from '@/policies/base';
@@ -58,14 +56,15 @@ export class FIFOPolicy extends BasePolicy {
         },
       },
       (span) => {
-        if (!this._hashes.has(hash)) {
+        const index = this._queue.findIndex((key) => key === hash);
+        if (!this._hashes.has(hash) || index === -1) {
           this._logger.warn(`Hash ${hash} is not being tracked, can not stop tracking`);
           span.end();
           return;
         }
 
         this._logger.verbose(`Stop tracking hash ${hash}`);
-        this._queue.shift();
+        this._queue.splice(index, 1);
         this._hashes.delete(hash);
         this.clearTTL(hash);
         span.end();
@@ -86,9 +85,9 @@ export class FIFOPolicy extends BasePolicy {
         },
       },
       (span) => {
-        const hash = sample([...this._queue]);
+        const hash = this._queue.shift();
+
         if (hash) {
-          this._queue.shift();
           this._hashes.delete(hash);
           this.clearTTL(hash);
         }
