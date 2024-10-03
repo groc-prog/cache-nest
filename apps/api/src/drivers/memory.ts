@@ -1,7 +1,7 @@
 import { encode, decode } from '@msgpack/msgpack';
 import { Mutex } from 'async-mutex';
 import fse from 'fs-extra';
-import { isNumber, lowerCase, parseInt } from 'lodash-es';
+import { isNumber, lowerCase, merge, parseInt } from 'lodash-es';
 import os from 'os';
 import path from 'path';
 
@@ -122,8 +122,18 @@ export class MemoryDriver extends BaseDriver {
         }
 
         this._logger.info(`Cache hit for ${hash} in ${policy} cache`);
-        const updatedCache = await this._mutex.runExclusive(() => this._policies[policy].hit<T>(cache));
-        this._caches[policy].set(hash, updatedCache);
+        const updatedCache = await this._mutex.runExclusive(() => {
+          this._policies[policy].hit(hash);
+
+          const updated: Cache<T> = merge({}, cache, {
+            atime: Date.now(),
+            hits: cache.hits + 1,
+          });
+          this._caches[policy].set(hash, updated);
+
+          return updated;
+        });
+
         cacheHitsCounter.add(1, {
           'cache.driver': this.driver,
           'cache.policy': policy,
@@ -436,7 +446,7 @@ export class MemoryDriver extends BaseDriver {
                     continue;
                   }
 
-                  this._logger.verbose(`Recovering cache ${hash}`);
+                  this._logger.debug(`Recovering cache ${hash}`);
                   this._caches[policy as Policy].set(hash, cache);
                   validHashes.add(hash);
                   recovered.total += 1;
@@ -444,7 +454,7 @@ export class MemoryDriver extends BaseDriver {
 
                   if (cache.options.ttl) this._policies[policy as Policy].registerTTL(hash, cache.options.ttl);
                   if (cache.options.invalidatedBy.length > 0) {
-                    this._logger.verbose(
+                    this._logger.debug(
                       `Registering ${cache.options.invalidatedBy.length} invalidation identifiers for ${hash}`,
                     );
                     cache.options.invalidatedBy

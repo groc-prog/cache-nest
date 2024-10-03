@@ -46,14 +46,12 @@ export abstract class BasePolicy extends EventEmitter {
   abstract stopTracking(hash: string): void;
 
   /**
-   * Updates the hit count and access time of a cache entry. If the cache entry is not found, a cache
+   * Updates the tracking of a cache entry. If the cache entry is not found, a cache
    * miss is recorded.
    * @abstract
-   * @template T - The expected type of the cache data.
-   * @param {Cache<T>} cache - The cache to hit.
-   * @returns {Cache<T>} The updated cache entry.
+   * @param {string} hash - The hash to hit.
    */
-  abstract hit<T>(cache: Cache<T>): Cache<T>;
+  abstract hit(hash: string): void;
 
   /**
    * Evicts all caches matching the given invalidation identifier.

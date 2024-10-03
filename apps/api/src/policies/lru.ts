@@ -1,6 +1,4 @@
-import { merge } from 'lodash-es';
-
-import { Driver, Policy, type Cache } from '@cache-nest/types';
+import { Driver, Policy } from '@cache-nest/types';
 
 import { BasePolicy } from '@/policies/base';
 import { tracer } from '@/utils/opentelemetry';
@@ -20,9 +18,7 @@ class Node {
 }
 
 interface LRUSnapshot {
-  mostRecentlyUsed: Node | null;
-  leastRecentlyUsed: Node | null;
-  keyMap: Map<string, Node>;
+  keyOrder: string[];
 }
 
 export class LRUPolicy extends BasePolicy {
@@ -31,6 +27,8 @@ export class LRUPolicy extends BasePolicy {
   private _leastRecentlyUsed: Node | null = null;
 
   private _cacheKeyMap: Map<string, Node> = new Map();
+
+  private _keyOrder: string[] = [];
 
   constructor(driver: Driver) {
     super(Policy.LRU, driver);
@@ -64,23 +62,19 @@ export class LRUPolicy extends BasePolicy {
         }
 
         this._logger.verbose(`Tracking new cache ${hash}`);
-
-        // Update most/least recently used nodes and hash map
-        // If no most recently used node is defined, the current entry is the first, else we update the linked list
-        // and then set the new node as the least recently used node since it has never been accessed
         const node = new Node(hash);
-        if (this._leastRecentlyUsed !== null) {
-          this._logger.debug('Updating least recently used node');
-          this._leastRecentlyUsed.prev = node;
-          node.next = this._leastRecentlyUsed;
+
+        this._logger.debug('Updating most recently used node');
+        if (this._mostRecentlyUsed !== null) {
+          this._mostRecentlyUsed.next = node;
+          node.prev = this._mostRecentlyUsed;
         }
 
-        this._logger.debug('Setting least recently used node to new node');
-        this._leastRecentlyUsed = node;
-        if (this._mostRecentlyUsed === null) this._mostRecentlyUsed = node;
+        this._mostRecentlyUsed = node;
+        if (this._leastRecentlyUsed === null) this._leastRecentlyUsed = node;
 
-        // Update the hash-node mapping an emit a `set` event
         this._cacheKeyMap.set(hash, node);
+        this._keyOrder.push(node.key);
         span.end();
       },
     );
@@ -99,7 +93,6 @@ export class LRUPolicy extends BasePolicy {
       (span) => {
         this._logger.verbose(`Stop tracking node ${hash}`);
 
-        // Shift all nodes connected to the node with the given hash
         const node = this._cacheKeyMap.get(hash);
         if (node === undefined) {
           this._logger.warn(`Node ${hash} is not being tracked, can not stop tracking`);
@@ -114,13 +107,16 @@ export class LRUPolicy extends BasePolicy {
         this._cacheKeyMap.delete(hash);
         this.clearTTL(node.key);
 
+        const index = this._keyOrder.findIndex((key) => key === hash);
+        if (index !== -1) this._keyOrder.splice(index, 1);
+
         span.end();
       },
     );
   }
 
-  hit<T>(cache: Cache<T>): Cache<T> {
-    return tracer.startActiveSpan(
+  hit(hash: string): void {
+    tracer.startActiveSpan(
       'HitCache',
       {
         attributes: {
@@ -129,7 +125,6 @@ export class LRUPolicy extends BasePolicy {
         },
       },
       (span) => {
-        const hash = this.generateHash(cache.identifier);
         this._logger.verbose(`Increasing hit count for cache ${hash}`);
         span.setAttribute('cache.hash', hash);
 
@@ -137,16 +132,11 @@ export class LRUPolicy extends BasePolicy {
         if (node !== undefined && node.key !== this._mostRecentlyUsed?.key) {
           this._logger.debug('Updating linked list for cache nodes');
 
-          // Remove node from linked list and insert it back at the mostRecentlyUsed position
           if (node.next !== null) node.next.prev = node.prev;
           if (node.prev !== null) node.prev.next = node.next;
 
-          // Update least recently used node to the next node in linked list if the current node
-          // is the least recently used node
           if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
 
-          // Set the current node as the most recently used node and update the previously most
-          // recently used node if nessecarry
           this._logger.debug('Updating most recently used node');
           if (this._mostRecentlyUsed !== null) {
             this._mostRecentlyUsed.next = node;
@@ -154,15 +144,19 @@ export class LRUPolicy extends BasePolicy {
           }
           this._mostRecentlyUsed = node;
           this._mostRecentlyUsed.next = null;
+
+          if (this._keyOrder.length > 1) {
+            const index = this._keyOrder.findIndex((key) => key === node.key);
+            const swap = this._keyOrder[index];
+
+            if (swap !== undefined) {
+              this._keyOrder[index] = this._keyOrder[index + 1] as string;
+              this._keyOrder[index + 1] = swap;
+            }
+          }
         }
 
-        const updatedCache = merge({}, cache, {
-          atime: Date.now(),
-          hits: cache.hits + 1,
-        });
-
         span.end();
-        return updatedCache;
       },
     );
   }
@@ -178,7 +172,6 @@ export class LRUPolicy extends BasePolicy {
         },
       },
       (span) => {
-        // If the least recently used node is null, we can't evict anything.
         if (this._leastRecentlyUsed === null) {
           this._logger.warn('No caches to evict');
           span.end();
@@ -192,8 +185,8 @@ export class LRUPolicy extends BasePolicy {
         this._logger.debug('Deleting cache and cleaning up TTL and invalidation identifiers');
         this.clearTTL(hashToEvict);
         this._cacheKeyMap.delete(hashToEvict);
+        this._keyOrder = this._keyOrder.filter((key) => key !== hashToEvict);
 
-        // Update the linked list and hash map
         if (newLeastRecentlyUsedNode !== null) {
           this._logger.debug('Updating least recently used node');
           newLeastRecentlyUsedNode.prev = null;
@@ -217,9 +210,7 @@ export class LRUPolicy extends BasePolicy {
       (span) => {
         this._logger.verbose(`Generating ${this.policy} snapshot`);
         const snapshot = {
-          mostRecentlyUsed: this._mostRecentlyUsed,
-          leastRecentlyUsed: this._leastRecentlyUsed,
-          keyMap: this._cacheKeyMap,
+          keyOrder: this._keyOrder,
         };
 
         span.end();
@@ -239,15 +230,30 @@ export class LRUPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.info(`Applying ${this.policy} snapshot`);
-        const { mostRecentlyUsed, leastRecentlyUsed, keyMap } = snapshot as LRUSnapshot;
+        const { keyOrder } = snapshot as LRUSnapshot;
+        this._keyOrder = keyOrder.filter((key) => hashes.has(key));
 
-        this._mostRecentlyUsed = mostRecentlyUsed;
-        this._leastRecentlyUsed = leastRecentlyUsed;
-        this._cacheKeyMap = keyMap;
+        this._keyOrder.forEach((key, index) => {
+          if (!hashes.has(key)) return;
 
-        for (const hash in this._cacheKeyMap) {
-          if (!hashes.has(hash)) this.stopTracking(hash);
-        }
+          const node = new Node(key);
+          const prevKey = this._keyOrder[index - 1];
+
+          if (this._leastRecentlyUsed === null && prevKey === undefined) {
+            this._leastRecentlyUsed = node;
+            this._cacheKeyMap.set(key, node);
+            return;
+          }
+
+          const prevNode = this._cacheKeyMap.get(prevKey!);
+          if (prevNode !== undefined) {
+            node.prev = prevNode;
+            prevNode.next = node;
+          }
+
+          this._cacheKeyMap.set(key, node);
+          if (index === this._keyOrder.length - 1) this._mostRecentlyUsed = node;
+        });
 
         span.end();
       },
