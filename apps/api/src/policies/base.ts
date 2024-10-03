@@ -54,7 +54,8 @@ export abstract class BasePolicy extends EventEmitter {
   abstract hit(hash: string): void;
 
   /**
-   * Evicts all caches matching the given invalidation identifier.
+   * Evicts a hash from tracking according to the policy. If no hash can be evicted,
+   * `null` is returned.
    * @abstract
    * @returns {string | null} The evicted hash or null if non got evicted.
    */

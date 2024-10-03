@@ -1,15 +1,17 @@
 server:
   enableSwagger: true
   authentication:
-    enabled: true
+    enabled: false
     apiKeys:
       - foo
       - bar
 drivers:
   memory:
-    maxSize: 20%,
+    maxSize: 200
+    evictFromOthers: false
     recovery:
-      enabled: true
+      enabled: false
+      snapshotInterval: 10
 tracing:
   enabled: true
   exporter: grpc

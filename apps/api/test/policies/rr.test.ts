@@ -105,6 +105,7 @@ describe('RRPolicy', () => {
       const hash = policy.evict();
       expect(hash).not.toBeNull();
       expect(hashes).toContain(hash);
+      expect(policy.cacheKeys.size).toBe(1);
     });
 
     it('should clear any TTL timers defined for the hash', () => {

@@ -5,12 +5,14 @@ import { Driver, Policy } from '@cache-nest/types';
 import { BasePolicy } from '@/policies/base';
 import { tracer } from '@/utils/opentelemetry';
 
-interface RRSnapshot {
-  cacheKeys: Set<string>;
+interface FIFOSnapshot {
+  queue: string[];
 }
 
-export class RRPolicy extends BasePolicy {
-  protected _cacheKeys: Set<string> = new Set<string>();
+export class FIFOPolicy extends BasePolicy {
+  protected _queue: string[] = [];
+
+  protected _hashes: Set<string> = new Set<string>();
 
   constructor(driver: Driver) {
     super(Policy.RR, driver);
@@ -31,14 +33,15 @@ export class RRPolicy extends BasePolicy {
         },
       },
       (span) => {
-        if (this._cacheKeys.has(hash)) {
+        if (this._hashes.has(hash)) {
           this._logger.warn(`Hash ${hash} is already being tracked`);
           span.end();
           return;
         }
 
         this._logger.verbose(`Tracking new hash ${hash}`);
-        this._cacheKeys.add(hash);
+        this._queue.push(hash);
+        this._hashes.add(hash);
         span.end();
       },
     );
@@ -55,14 +58,15 @@ export class RRPolicy extends BasePolicy {
         },
       },
       (span) => {
-        if (!this._cacheKeys.has(hash)) {
+        if (!this._hashes.has(hash)) {
           this._logger.warn(`Hash ${hash} is not being tracked, can not stop tracking`);
           span.end();
           return;
         }
 
         this._logger.verbose(`Stop tracking hash ${hash}`);
-        this._cacheKeys.delete(hash);
+        this._queue.shift();
+        this._hashes.delete(hash);
         this.clearTTL(hash);
         span.end();
       },
@@ -82,9 +86,10 @@ export class RRPolicy extends BasePolicy {
         },
       },
       (span) => {
-        const hash = sample([...this._cacheKeys]);
+        const hash = sample([...this._queue]);
         if (hash) {
-          this._cacheKeys.delete(hash);
+          this._queue.shift();
+          this._hashes.delete(hash);
           this.clearTTL(hash);
         }
 
@@ -105,8 +110,8 @@ export class RRPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.verbose(`Generating ${this.policy} snapshot`);
-        const snapshot: RRSnapshot = {
-          cacheKeys: this._cacheKeys,
+        const snapshot: FIFOSnapshot = {
+          queue: this._queue,
         };
 
         span.end();
@@ -115,7 +120,7 @@ export class RRPolicy extends BasePolicy {
     );
   }
 
-  applySnapshot(hashes: Set<string>, { cacheKeys }: RRSnapshot): void {
+  applySnapshot(hashes: Set<string>, { queue }: FIFOSnapshot): void {
     tracer.startActiveSpan(
       'ApplySnapshot',
       {
@@ -126,9 +131,12 @@ export class RRPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.info(`Applying ${this.policy} snapshot`);
-        for (const key of cacheKeys.keys()) {
-          if (hashes.has(key)) this._cacheKeys.add(key);
-        }
+        queue.forEach((hash) => {
+          if (!hashes.has(hash)) return;
+
+          this._queue.push(hash);
+          this._hashes.add(hash);
+        });
 
         span.end();
       },
