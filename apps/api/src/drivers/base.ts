@@ -74,8 +74,8 @@ export abstract class BaseDriver {
    * @abstract
    * @protected
    * @template T - The expected type of the cache data.
-   * @throws {CacheTooBigError} If the cache is bigger than the maximum cache size.
-   * @throws {NoCachesToEvictError} If no more caches can be evicted from the current policy. Only is thrown
+   * @throws {ApiError} If the cache is bigger than the maximum cache size.
+   * @throws {ApiError} If no more caches can be evicted from the current policy. Only is thrown
    *  if `evictFromOthers` is set to `false`.
    * @param {Policy} policy - The policy to evict caches from first.
    * @param {Cache<T>} cache - The cache to insert.

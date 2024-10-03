@@ -56,7 +56,7 @@ export class MRUPolicy extends BasePolicy {
       },
       (span) => {
         if (this._cacheKeyMap.has(hash)) {
-          this._logger.warn(`Node ${hash} is already being tracked`);
+          this._logger.warn(`Hash ${hash} is already being tracked`);
           span.end();
           return;
         }
@@ -64,7 +64,7 @@ export class MRUPolicy extends BasePolicy {
         this._logger.verbose(`Tracking new cache ${hash}`);
         const node = new Node(hash);
 
-        this._logger.debug('Updating most recently used node');
+        this._logger.debug('Updating most recently used hash');
         if (this._mostRecentlyUsed !== null) {
           this._mostRecentlyUsed.next = node;
           node.prev = this._mostRecentlyUsed;
@@ -91,15 +91,14 @@ export class MRUPolicy extends BasePolicy {
         },
       },
       (span) => {
-        this._logger.verbose(`Stop tracking node ${hash}`);
-
         const node = this._cacheKeyMap.get(hash);
         if (node === undefined) {
-          this._logger.warn(`Node ${hash} is not being tracked, can not stop tracking`);
+          this._logger.warn(`Hash ${hash} is not being tracked, can not stop tracking`);
           span.end();
           return;
         }
 
+        this._logger.verbose(`Stop tracking hash ${hash}`);
         if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
         if (this._mostRecentlyUsed?.key === node.key) this._mostRecentlyUsed = node.prev;
         if (node.prev) node.prev.next = node.next;
@@ -125,19 +124,19 @@ export class MRUPolicy extends BasePolicy {
         },
       },
       (span) => {
-        this._logger.verbose(`Increasing hit count for cache ${hash}`);
+        this._logger.verbose(`Increasing hit count for hash ${hash}`);
         span.setAttribute('cache.hash', hash);
 
         const node = this._cacheKeyMap.get(hash);
         if (node !== undefined && node.key !== this._mostRecentlyUsed?.key) {
-          this._logger.debug('Updating linked list for cache nodes');
+          this._logger.debug('Updating linked list for hashes');
 
           if (node.next !== null) node.next.prev = node.prev;
           if (node.prev !== null) node.prev.next = node.next;
 
           if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
 
-          this._logger.debug('Updating most recently used node');
+          this._logger.debug('Updating most recently used hash');
           if (this._mostRecentlyUsed !== null) {
             this._mostRecentlyUsed.next = node;
             node.prev = this._mostRecentlyUsed;
@@ -179,16 +178,16 @@ export class MRUPolicy extends BasePolicy {
         }
 
         const hashToEvict = this._mostRecentlyUsed.key;
-        this._logger.verbose(`Stopping tracking of cache ${hashToEvict}`);
+        this._logger.verbose(`Stopping tracking of hash ${hashToEvict}`);
         const newMostRecentlyUsedNode = this._mostRecentlyUsed.next;
 
-        this._logger.debug('Deleting cache and cleaning up TTL and invalidation identifiers');
+        this._logger.debug('Deleting hash and cleaning up TTL and invalidation identifiers');
         this.clearTTL(hashToEvict);
         this._cacheKeyMap.delete(hashToEvict);
         this._keyOrder = this._keyOrder.filter((key) => key !== hashToEvict);
 
         if (newMostRecentlyUsedNode !== null) {
-          this._logger.debug('Updating least recently used node');
+          this._logger.debug('Updating least recently used hash');
           newMostRecentlyUsedNode.prev = null;
         }
         this._mostRecentlyUsed = newMostRecentlyUsedNode;
@@ -209,7 +208,7 @@ export class MRUPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.verbose(`Generating ${this.policy} snapshot`);
-        const snapshot = {
+        const snapshot: MRUSnapshot = {
           keyOrder: this._keyOrder,
         };
 
@@ -219,7 +218,7 @@ export class MRUPolicy extends BasePolicy {
     );
   }
 
-  applySnapshot(hashes: Set<string>, snapshot: unknown): void {
+  applySnapshot(hashes: Set<string>, { keyOrder }: MRUSnapshot): void {
     tracer.startActiveSpan(
       'ApplySnapshot',
       {
@@ -230,7 +229,6 @@ export class MRUPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.info(`Applying ${this.policy} snapshot`);
-        const { keyOrder } = snapshot as MRUSnapshot;
         this._keyOrder = keyOrder.filter((key) => hashes.has(key));
 
         this._keyOrder.forEach((key, index) => {
