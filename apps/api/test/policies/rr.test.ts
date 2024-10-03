@@ -76,6 +76,17 @@ describe('RRPolicy', () => {
       expect(policy.cacheKeys.has('kjsdu238dh9aeb2')).toBeFalse();
     });
 
+    it('should clear any TTL timers defined for the hash', () => {
+      const clearTTLSpy = spyOn(policy, 'clearTTL');
+
+      policy.setMockedCacheKeys(['i318rbr23ht2tk2']);
+      expect(policy.cacheKeys.size).toBe(1);
+
+      policy.stopTracking('i318rbr23ht2tk2');
+      expect(policy.cacheKeys.size).toBe(0);
+      expect(clearTTLSpy).toHaveBeenNthCalledWith(1, 'i318rbr23ht2tk2');
+    });
+
     it('should do nothing if the hash is not being tracked', () => {
       const deleteSpy = spyOn(policy.cacheKeys, 'delete');
 
@@ -94,6 +105,17 @@ describe('RRPolicy', () => {
       const hash = policy.evict();
       expect(hash).not.toBeNull();
       expect(hashes).toContain(hash);
+    });
+
+    it('should clear any TTL timers defined for the hash', () => {
+      const clearTTLSpy = spyOn(policy, 'clearTTL');
+
+      policy.setMockedCacheKeys(['i318rbr23ht2tk2']);
+      expect(policy.cacheKeys.size).toBe(1);
+
+      const hash = policy.evict();
+      expect(hash).toContain('i318rbr23ht2tk2');
+      expect(clearTTLSpy).toHaveBeenNthCalledWith(1, 'i318rbr23ht2tk2');
     });
 
     it('should return `null` if no hash can be evicted', () => {
