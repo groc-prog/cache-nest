@@ -119,34 +119,36 @@ export class LRUPolicy extends BasePolicy {
         attributes: {
           'cache.driver': this.driver,
           'cache.policy': this.policy,
+          'cache.hash': hash,
         },
       },
       (span) => {
-        this._logger.verbose(`Increasing hit count for hash ${hash}`);
-        span.setAttribute('cache.hash', hash);
-
         const node = this._cacheKeyMap.get(hash);
-        if (node !== undefined && node.key !== this._mostRecentlyUsed?.key) {
-          this._logger.debug('Updating linked list for hashes');
+        if (node === undefined || node.key !== this._mostRecentlyUsed?.key) {
+          this._logger.verbose(`Hash ${hash} is already the most recently used, skipping`);
+          span.end();
+          return;
+        }
 
-          if (node.next !== null) node.next.prev = node.prev;
-          if (node.prev !== null) node.prev.next = node.next;
+        this._logger.verbose(`Increasing hit count for hash ${hash}`);
+        this._logger.debug('Updating linked list for hashes');
+        if (node.next !== null) node.next.prev = node.prev;
+        if (node.prev !== null) node.prev.next = node.next;
 
-          if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
+        if (this._leastRecentlyUsed?.key === node.key) this._leastRecentlyUsed = node.next;
 
-          this._logger.debug('Updating most recently used hash');
-          if (this._mostRecentlyUsed !== null) {
-            this._mostRecentlyUsed.next = node;
-            node.prev = this._mostRecentlyUsed;
-          }
-          this._mostRecentlyUsed = node;
-          this._mostRecentlyUsed.next = null;
+        this._logger.debug('Updating most recently used hash');
+        if (this._mostRecentlyUsed !== null) {
+          this._mostRecentlyUsed.next = node;
+          node.prev = this._mostRecentlyUsed;
+        }
+        this._mostRecentlyUsed = node;
+        this._mostRecentlyUsed.next = null;
 
-          if (this._keyOrder.length > 1) {
-            const index = this._keyOrder.findIndex((key) => key === node.key);
-            this._keyOrder.splice(index, 1);
-            this._keyOrder.push(hash);
-          }
+        if (this._keyOrder.length > 1) {
+          const index = this._keyOrder.findIndex((key) => key === node.key);
+          this._keyOrder.splice(index, 1);
+          this._keyOrder.push(hash);
         }
 
         span.end();
@@ -225,8 +227,8 @@ export class LRUPolicy extends BasePolicy {
         this._logger.info(`Applying ${this.policy} snapshot`);
         this._keyOrder = keyOrder.filter((key) => hashes.has(key));
 
-        this._keyOrder.forEach((key, index) => {
-          if (!hashes.has(key)) return;
+        for (const [index, key] of this._keyOrder.entries()) {
+          if (!hashes.has(key)) continue;
 
           const node = new LRUNode(key);
           const prevKey = this._keyOrder[index - 1];
@@ -234,7 +236,7 @@ export class LRUPolicy extends BasePolicy {
           if (this._leastRecentlyUsed === null && prevKey === undefined) {
             this._leastRecentlyUsed = node;
             this._cacheKeyMap.set(key, node);
-            return;
+            continue;
           }
 
           const prevNode = this._cacheKeyMap.get(prevKey!);
@@ -245,7 +247,7 @@ export class LRUPolicy extends BasePolicy {
 
           this._cacheKeyMap.set(key, node);
           if (index === this._keyOrder.length - 1) this._mostRecentlyUsed = node;
-        });
+        }
 
         span.end();
       },

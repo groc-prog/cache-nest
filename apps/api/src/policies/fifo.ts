@@ -130,12 +130,12 @@ export class FIFOPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.info(`Applying ${this.policy} snapshot`);
-        queue.forEach((hash) => {
-          if (!hashes.has(hash)) return;
+        for (const hash of queue) {
+          if (!hashes.has(hash)) continue;
 
           this._queue.push(hash);
           this._hashes.add(hash);
-        });
+        }
 
         span.end();
       },
