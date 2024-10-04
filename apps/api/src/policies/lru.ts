@@ -124,7 +124,12 @@ export class LRUPolicy extends BasePolicy {
       },
       (span) => {
         const node = this._cacheKeyMap.get(hash);
-        if (node === undefined || node.key !== this._mostRecentlyUsed?.key) {
+        if (node === undefined) {
+          this._logger.verbose(`Hash ${hash} is not being tracked, skipping`);
+          span.end();
+          return;
+        }
+        if (node.key === this._mostRecentlyUsed?.key) {
           this._logger.verbose(`Hash ${hash} is already the most recently used, skipping`);
           span.end();
           return;
