@@ -17,7 +17,7 @@ export class MFUPolicy extends BasePolicy {
   protected _highestHitCount: number = 0;
 
   constructor(driver: Driver) {
-    super(Policy.RR, driver);
+    super(Policy.MFU, driver);
 
     this.on('ttlExpired', (hash) => {
       this.stopTracking(hash);
@@ -98,12 +98,8 @@ export class MFUPolicy extends BasePolicy {
         },
       },
       (span) => {
-        const hits = this._cacheKeyMap.get(hash);
-        if (hits === undefined) {
-          this._logger.warn(`Hash ${hash} is not being tracked, can not increase hit count`);
-          span.end();
-          return;
-        }
+        let hits = this._cacheKeyMap.get(hash);
+        if (hits === undefined) hits = -1;
 
         const index = this._keyOrderMap.get(hits)?.findIndex((key) => key === hash);
         if (index === -1 || index === undefined) {
@@ -143,12 +139,14 @@ export class MFUPolicy extends BasePolicy {
           return null;
         }
 
+        const hits = this._cacheKeyMap.get(hash);
         this._cacheKeyMap.delete(hash);
         this.clearTTL(hash);
 
         if (this._keyOrderMap.get(this._highestHitCount)?.length === 0) {
           this._keyOrderMap.delete(this._highestHitCount);
-          this._highestHitCount = max(Array.from(this._keyOrderMap.keys())) || 0;
+
+          if (this._highestHitCount === hits) this._highestHitCount = max(Array.from(this._keyOrderMap.keys())) || 0;
         }
 
         span.end();

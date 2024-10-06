@@ -13,7 +13,7 @@ export class FIFOPolicy extends BasePolicy {
   protected _hashes: Set<string> = new Set<string>();
 
   constructor(driver: Driver) {
-    super(Policy.RR, driver);
+    super(Policy.FIFO, driver);
 
     this.on('ttlExpired', (hash) => {
       this.stopTracking(hash);
