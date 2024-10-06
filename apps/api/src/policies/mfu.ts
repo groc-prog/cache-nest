@@ -5,11 +5,11 @@ import { Driver, Policy } from '@cache-nest/types';
 import { BasePolicy } from '@/policies/base';
 import { tracer } from '@/utils/opentelemetry';
 
-interface LFUSnapshot {
+interface MFUSnapshot {
   keyOrderMap: Map<number, string[]>;
 }
 
-export class LFUPolicy extends BasePolicy {
+export class MFUPolicy extends BasePolicy {
   protected _cacheKeyMap: Map<string, number> = new Map<string, number>();
 
   protected _keyOrderMap: Map<number, string[]> = new Map<number, string[]>();
@@ -61,10 +61,11 @@ export class LFUPolicy extends BasePolicy {
         },
       },
       (span) => {
-        const hits = this._cacheKeyMap.get(hash);
-        const index = this._keyOrderMap.get(hits || -1)?.findIndex((key) => key === hash) || -1;
+        let hits = this._cacheKeyMap.get(hash);
+        if (hits === undefined) hits = -1;
 
-        if (hits === undefined || index === -1) {
+        const index = this._keyOrderMap.get(hits)?.findIndex((key) => key === hash);
+        if (hits === undefined || index === -1 || index === undefined) {
           this._logger.warn(`Hash ${hash} is not being tracked, can not stop tracking`);
           span.end();
           return;
@@ -98,9 +99,14 @@ export class LFUPolicy extends BasePolicy {
       },
       (span) => {
         const hits = this._cacheKeyMap.get(hash);
-        const index = this._keyOrderMap.get(hits || -1)?.findIndex((key) => key === hash) || -1;
+        if (hits === undefined) {
+          this._logger.warn(`Hash ${hash} is not being tracked, can not increase hit count`);
+          span.end();
+          return;
+        }
 
-        if (hits === undefined || index === -1) {
+        const index = this._keyOrderMap.get(hits)?.findIndex((key) => key === hash);
+        if (index === -1 || index === undefined) {
           this._logger.warn(`Hash ${hash} is not being tracked, can not increase hit count`);
           span.end();
           return;
@@ -162,7 +168,7 @@ export class LFUPolicy extends BasePolicy {
       },
       (span) => {
         this._logger.verbose(`Generating ${this.policy} snapshot`);
-        const snapshot: LFUSnapshot = {
+        const snapshot: MFUSnapshot = {
           keyOrderMap: this._keyOrderMap,
         };
 
@@ -172,7 +178,7 @@ export class LFUPolicy extends BasePolicy {
     );
   }
 
-  applySnapshot(hashes: Set<string>, { keyOrderMap }: LFUSnapshot): void {
+  applySnapshot(hashes: Set<string>, { keyOrderMap }: MFUSnapshot): void {
     tracer.startActiveSpan(
       'ApplySnapshot',
       {
@@ -189,7 +195,7 @@ export class LFUPolicy extends BasePolicy {
           if (hits > this._highestHitCount) this._highestHitCount = hits;
           if (!this._keyOrderMap.has(hits)) this._keyOrderMap.set(hits, validHashes);
 
-          for (const hash in validHashes) {
+          for (const hash of validHashes) {
             this._cacheKeyMap.set(hash, hits);
           }
         }
