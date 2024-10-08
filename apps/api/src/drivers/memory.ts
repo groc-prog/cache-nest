@@ -276,12 +276,12 @@ export class MemoryDriver extends BaseDriver {
 
   resourceUsage(): DriverResourceUsage {
     return tracer.startActiveSpan('ResourceUsage', { attributes: { 'cache.driver': this.driver } }, (span) => {
-      const totalRelative = (this._getCurrentCacheSize() * 100) / (this._config.maxSize as number);
+      const totalRelative = (this._getCurrentCacheSize() * 100) / this._config.maxSize;
 
       const resourceUsage = Object.keys(this._caches).reduce(
         (obj, policy) => {
           const size = Buffer.byteLength(JSON.stringify([...this._caches[policy as Policy].values()]));
-          const relativeSize = (size * 100) / (this._config.maxSize as number);
+          const relativeSize = (size * 100) / this._config.maxSize;
 
           obj[lowerCase(policy) as Lowercase<Policy>] = {
             count: this._caches[policy as Policy].size,
@@ -322,10 +322,10 @@ export class MemoryDriver extends BaseDriver {
         this._logger.verbose('Ensuring cache size limits');
 
         const cacheSize = Buffer.byteLength(JSON.stringify(cache));
-        if (cacheSize > (this._config.maxSize as number))
+        if (cacheSize > this._config.maxSize)
           throw new ApiError({ message: 'Cache too big', detail: 'Cache size exceeds maximum', status: 409 });
 
-        const currentMaxSize = (this._config.maxSize as number) - cacheSize;
+        const currentMaxSize = this._config.maxSize - cacheSize;
         if (this._getCurrentCacheSize() <= currentMaxSize) {
           this._logger.info('No caches have to be evicted, skipping');
           span.end();

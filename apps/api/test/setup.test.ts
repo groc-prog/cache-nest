@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, mock, it, jest, spyOn, type Mock } from '
 import { merge } from 'lodash-es';
 import os from 'os';
 
-import { OpenTelemetryExporter, type ApiConfiguration } from '@cache-nest/types';
+import { OpenTelemetryExporter, type UnparsedApiConfiguration } from '@cache-nest/types';
 
 import { API_CONFIG_DEFAULTS, getApiConfiguration } from '@/setup';
 
@@ -61,7 +61,7 @@ describe('.getApiConfiguration()', () => {
     const configuration = await getApiConfiguration();
     expect(sdkNodeMock.NodeSDK).not.toHaveBeenCalled();
     expect(configuration).toEqual(
-      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
+      merge({}, API_CONFIG_DEFAULTS as UnparsedApiConfiguration, {
         drivers: {
           memory: { maxSize: 2000 },
           fileSystem: { maxSize: 2000 },
@@ -80,7 +80,7 @@ describe('.getApiConfiguration()', () => {
 
     const configuration = await getApiConfiguration();
     expect(configuration).toEqual(
-      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
+      merge({}, API_CONFIG_DEFAULTS as UnparsedApiConfiguration, {
         server: {
           port: 4000,
         },
@@ -105,7 +105,7 @@ describe('.getApiConfiguration()', () => {
 
     const configuration = await getApiConfiguration();
     expect(configuration).toEqual(
-      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
+      merge({}, API_CONFIG_DEFAULTS as UnparsedApiConfiguration, {
         server: {
           port: 4000,
         },
@@ -147,7 +147,7 @@ describe('.getApiConfiguration()', () => {
     const configuration = await getApiConfiguration();
     expect(sdkNodeMock.NodeSDK).not.toHaveBeenCalled();
     expect(configuration).toEqual(
-      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
+      merge({}, API_CONFIG_DEFAULTS as UnparsedApiConfiguration, {
         drivers: {
           memory: { maxSize: 2000 },
           fileSystem: { maxSize: 2000 },

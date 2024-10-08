@@ -13,9 +13,9 @@ export enum OpenTelemetryExporter {
 }
 
 /**
- * API configuration for server/tracing/metrics/...
+ * API configuration for server/tracing/metrics/etc before parsing.
  */
-export interface ApiConfiguration {
+export interface UnparsedApiConfiguration {
   server: {
     /**
      * Port the server will be started on.
@@ -175,5 +175,16 @@ export interface ApiConfiguration {
      * @default false
      */
     enabled: boolean;
+  };
+}
+
+export interface ApiConfiguration extends UnparsedApiConfiguration {
+  drivers: {
+    memory: {
+      maxSize: number;
+    } & UnparsedApiConfiguration['drivers']['memory'];
+    fileSystem: {
+      maxSize: number;
+    } & UnparsedApiConfiguration['drivers']['fileSystem'];
   };
 }

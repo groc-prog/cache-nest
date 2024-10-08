@@ -19,14 +19,19 @@ import os from 'os';
 import path from 'path';
 import { z } from 'zod';
 
-import { type ApiConfiguration, type DeepReadonly, OpenTelemetryExporter } from '@cache-nest/types';
+import {
+  type UnparsedApiConfiguration,
+  type DeepReadonly,
+  OpenTelemetryExporter,
+  type ApiConfiguration,
+} from '@cache-nest/types';
 
 import logger from '@/utils/logger';
 
 const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
 const API_CONFIG_FILEPATH: Readonly<string> = env.NODE_ENV !== 'production' ? '.' : '/etc';
 export const API_SERVICE_NAME: Readonly<string> = 'cache-nest';
-export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
+export const API_CONFIG_DEFAULTS: DeepReadonly<UnparsedApiConfiguration> = {
   server: {
     port: 3000,
     host: '0.0.0.0',
@@ -183,6 +188,8 @@ const ApiConfigurationValidator = z.object({
 /**
  * Starts the NodeJS Opentelemetry SDK with the defined configuration.
  * @async
+ * @param {ApiConfiguration['tracing']} tracingConfig - The tracing configuration.
+ * @param {ApiConfiguration['metrics']} metricsConfig - The metrics configuration.
  */
 async function startSDK(
   tracingConfig: ApiConfiguration['tracing'],
@@ -275,7 +282,7 @@ async function startSDK(
  */
 export async function getApiConfiguration(): Promise<ApiConfiguration> {
   logger.info(`Using Cache-Nest ${env.VERSION}`);
-  let apiConfig = merge({}, API_CONFIG_DEFAULTS) as ApiConfiguration;
+  let apiConfig = merge({}, API_CONFIG_DEFAULTS) as UnparsedApiConfiguration;
 
   try {
     logger.debug(`Searching for configuration file ${API_CONFIG_FILENAME} as path ${API_CONFIG_FILEPATH}`);
