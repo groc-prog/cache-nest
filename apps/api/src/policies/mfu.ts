@@ -139,14 +139,13 @@ export class MFUPolicy extends BasePolicy {
           return null;
         }
 
-        const hits = this._cacheKeyMap.get(hash);
         this._cacheKeyMap.delete(hash);
         this.clearTTL(hash);
 
         if (this._keyOrderMap.get(this._highestHitCount)?.length === 0) {
           this._keyOrderMap.delete(this._highestHitCount);
 
-          if (this._highestHitCount === hits) this._highestHitCount = max(Array.from(this._keyOrderMap.keys())) || 0;
+          this._highestHitCount = max(Array.from(this._keyOrderMap.keys())) || 0;
         }
 
         span.end();
