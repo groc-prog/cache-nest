@@ -14,7 +14,7 @@ import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, SEMRESATTRS_HOST_NAME } from '
 import { env } from 'bun';
 import fse from 'fs-extra';
 import jsYaml from 'js-yaml';
-import { isNumber, merge } from 'lodash-es';
+import { merge } from 'lodash-es';
 import os from 'os';
 import path from 'path';
 import { z } from 'zod';
@@ -74,8 +74,8 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   },
 };
 
-const NumberOrPercentageValidator = z.union([z.string(), z.number()]).superRefine((value, ctx) => {
-  if (isNumber(value)) {
+const NumberOrPercentageValidator = z.union([
+  z.number().superRefine((value, ctx) => {
     if (value <= 0)
       ctx.addIssue({
         code: z.ZodIssueCode.too_small,
@@ -92,35 +92,43 @@ const NumberOrPercentageValidator = z.union([z.string(), z.number()]).superRefin
         inclusive: true,
         message: 'maxSize must be less than the total memory/storage',
       });
-  } else {
-    const percentage = parseInt(value.replace('%', ''));
-    if (isNaN(percentage))
-      return ctx.addIssue({
-        code: z.ZodIssueCode.invalid_type,
-        expected: 'number',
-        received: 'string',
-        message: 'maxSize must be a number or a percentage string',
-      });
+  }),
+  z
+    .string()
+    .superRefine((value, ctx) => {
+      const percentage = parseFloat(value.replace('%', ''));
 
-    if (percentage <= 0)
-      ctx.addIssue({
-        code: z.ZodIssueCode.too_small,
-        minimum: 1,
-        type: 'number',
-        inclusive: true,
-        message: 'maxSize must be greater than 0%',
-      });
+      if (isNaN(percentage))
+        return ctx.addIssue({
+          code: z.ZodIssueCode.invalid_type,
+          expected: 'number',
+          received: 'string',
+          message: 'maxSize must be a number or a percentage string in the format {number}%',
+        });
 
-    if (percentage >= 100)
-      ctx.addIssue({
-        code: z.ZodIssueCode.too_big,
-        maximum: 100,
-        type: 'number',
-        inclusive: true,
-        message: 'maxSize must be less than 100%',
-      });
-  }
-});
+      if (percentage <= 0)
+        ctx.addIssue({
+          code: z.ZodIssueCode.too_small,
+          minimum: 1,
+          type: 'number',
+          inclusive: true,
+          message: 'maxSize must be greater than 0%',
+        });
+
+      if (percentage >= 100)
+        ctx.addIssue({
+          code: z.ZodIssueCode.too_big,
+          maximum: 100,
+          type: 'number',
+          inclusive: true,
+          message: 'maxSize must be less than 100%',
+        });
+    })
+    .transform((value) => {
+      const percentage = parseFloat(value.replace('%', ''));
+      return Math.floor((percentage / 100) * os.totalmem());
+    }),
+]);
 
 const ApiConfigurationValidator = z.object({
   server: z.object({

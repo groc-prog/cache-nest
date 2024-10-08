@@ -32,6 +32,13 @@ mock.module('@opentelemetry/sdk-metrics', () => ({
   PeriodicExportingMetricReader: jest.fn(),
 }));
 
+mock.module('os', () => ({
+  default: {
+    totalmem: jest.fn().mockImplementation(() => 10000),
+    hostname: jest.fn().mockImplementation(() => ''),
+  },
+}));
+
 describe('.getApiConfiguration()', () => {
   let sdkNodeMock: typeof import('@opentelemetry/sdk-node');
   let sdkMetricsMock: typeof import('@opentelemetry/sdk-metrics');
@@ -53,7 +60,14 @@ describe('.getApiConfiguration()', () => {
 
     const configuration = await getApiConfiguration();
     expect(sdkNodeMock.NodeSDK).not.toHaveBeenCalled();
-    expect(configuration).toEqual(API_CONFIG_DEFAULTS as ApiConfiguration);
+    expect(configuration).toEqual(
+      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
+        drivers: {
+          memory: { maxSize: 2000 },
+          fileSystem: { maxSize: 2000 },
+        },
+      }),
+    );
   });
 
   it('should use the configuration defined in a `cache-nest-config.yml` or `cache-nest-config.yaml` file', async () => {
@@ -71,6 +85,7 @@ describe('.getApiConfiguration()', () => {
           port: 4000,
         },
         drivers: {
+          memory: { maxSize: 2000 },
           fileSystem: { maxSize: 2000 },
         },
         tracing: { exporter: OpenTelemetryExporter.HTTP },
@@ -95,6 +110,7 @@ describe('.getApiConfiguration()', () => {
           port: 4000,
         },
         drivers: {
+          memory: { maxSize: 2000 },
           fileSystem: { maxSize: 2000 },
         },
         tracing: { exporter: OpenTelemetryExporter.HTTP },
@@ -130,7 +146,14 @@ describe('.getApiConfiguration()', () => {
 
     const configuration = await getApiConfiguration();
     expect(sdkNodeMock.NodeSDK).not.toHaveBeenCalled();
-    expect(configuration).toEqual(API_CONFIG_DEFAULTS as ApiConfiguration);
+    expect(configuration).toEqual(
+      merge({}, API_CONFIG_DEFAULTS as ApiConfiguration, {
+        drivers: {
+          memory: { maxSize: 2000 },
+          fileSystem: { maxSize: 2000 },
+        },
+      }),
+    );
     // @ts-ignore
     expect(fsExtraMock.default.readFile).not.toHaveBeenCalled();
   });

@@ -1,8 +1,7 @@
 import { encode, decode } from '@msgpack/msgpack';
 import { Mutex } from 'async-mutex';
 import fse from 'fs-extra';
-import { capitalize, isNumber, lowerCase, merge, parseInt } from 'lodash-es';
-import os from 'os';
+import { capitalize, lowerCase, merge } from 'lodash-es';
 import path from 'path';
 
 import {
@@ -17,7 +16,10 @@ import {
 
 import { BaseDriver } from '@/drivers/base';
 import type { BasePolicy } from '@/policies/base';
+import { FIFOPolicy } from '@/policies/fifo';
+import { LFUPolicy } from '@/policies/lfu';
 import { LRUPolicy } from '@/policies/lru';
+import { MFUPolicy } from '@/policies/mfu';
 import { MRUPolicy } from '@/policies/mru';
 import { RRPolicy } from '@/policies/rr';
 import type { CreateCache } from '@/types/cache';
@@ -35,7 +37,7 @@ import {
 
 type Snapshot = {
   caches: {
-    [K in Policy]: Map<string, Cache<unknown>>;
+    [K in Policy]: Map<string, Cache>;
   };
   policies: {
     [K in Policy]: unknown;
@@ -43,32 +45,40 @@ type Snapshot = {
 };
 
 export class MemoryDriver extends BaseDriver {
-  // @ts-expect-error
-  private _caches: Record<Policy, Map<string, Cache>> = {
+  private _caches: Record<Policy, Map<string, Cache<unknown>>> = {
     [Policy.LRU]: new Map(),
     [Policy.MRU]: new Map(),
     [Policy.RR]: new Map(),
+    [Policy.FIFO]: new Map(),
+    [Policy.LFU]: new Map(),
+    [Policy.MFU]: new Map(),
   };
 
-  // @ts-expect-error
   private _policies: Record<Policy, BasePolicy> = {
     [Policy.LRU]: new LRUPolicy(Driver.MEMORY),
     [Policy.MRU]: new MRUPolicy(Driver.MEMORY),
     [Policy.RR]: new RRPolicy(Driver.MEMORY),
+    [Policy.FIFO]: new FIFOPolicy(Driver.MEMORY),
+    [Policy.MFU]: new MFUPolicy(Driver.MEMORY),
+    [Policy.LFU]: new LFUPolicy(Driver.MEMORY),
   };
 
-  // @ts-expect-error
   private _invalidations: Record<Policy, Map<string, Set<string>>> = {
     [Policy.LRU]: new Map(),
     [Policy.MRU]: new Map(),
     [Policy.RR]: new Map(),
+    [Policy.FIFO]: new Map(),
+    [Policy.MFU]: new Map(),
+    [Policy.LFU]: new Map(),
   };
 
-  // @ts-expect-error
   private _mutexes: Record<Policy, Mutex> = {
     [Policy.LRU]: new Mutex(),
     [Policy.MRU]: new Mutex(),
     [Policy.RR]: new Mutex(),
+    [Policy.FIFO]: new Mutex(),
+    [Policy.MFU]: new Mutex(),
+    [Policy.LFU]: new Mutex(),
   };
 
   private _config: ApiConfiguration['drivers']['memory'];
@@ -96,12 +106,6 @@ export class MemoryDriver extends BaseDriver {
           });
         }
 
-        this._logger.verbose('Calculating size limits');
-        if (!isNumber(this._config.maxSize)) {
-          const percentage = parseInt(this._config.maxSize.replace('%', ''));
-          this._config.maxSize = Math.floor((percentage / 100) * os.totalmem());
-        }
-
         if (this._config.recovery.enabled) await this._initSnapshots();
 
         this._logger.info(`${capitalize(this.driver)} driver initialized`);
@@ -125,7 +129,7 @@ export class MemoryDriver extends BaseDriver {
         span.setAttribute('cache.hash', hash);
 
         this._logger.info(`Getting cache for ${hash}`);
-        const cache = this._caches[policy].get(hash);
+        const cache = this._caches[policy].get(hash) as Cache<T>;
 
         if (cache == null) {
           this._logger.info(`No cache for ${hash} found in ${policy} cache`);

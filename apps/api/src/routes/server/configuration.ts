@@ -53,7 +53,8 @@ export default (app: App) =>
             memory: t.Object({
               maxSize: t.Union([t.String(), t.Number()], {
                 default: '20%',
-                description: 'Maximum amount of memory the driver is allowed to use.',
+                description:
+                  'Maximum amount of memory the driver is allowed to use. Can be a number or a string in the format of {number}%.',
               }),
               evictFromOthers: t.Boolean({
                 default: false,
@@ -79,7 +80,8 @@ export default (app: App) =>
             fileSystem: t.Object({
               maxSize: t.Union([t.String(), t.Number()], {
                 default: '20%',
-                description: 'Maximum amount of disk space the driver is allowed to use.',
+                description:
+                  'Maximum amount of disk space the driver is allowed to use. Can be a number or a string in the format of {number}%.',
               }),
               mountPath: t.String({
                 default: '.cache-nest/file-system',
