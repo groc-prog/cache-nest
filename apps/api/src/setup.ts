@@ -38,10 +38,6 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
       enabled: false,
       apiKeys: [],
     },
-    clustering: {
-      enabled: false,
-      clusters: 'auto',
-    },
   },
   drivers: {
     memory: {
@@ -137,13 +133,6 @@ const ApiConfigurationValidator = z.object({
     authentication: z.object({
       enabled: z.boolean(),
       apiKeys: z.array(z.string()),
-    }),
-    clustering: z.object({
-      enabled: z.boolean(),
-      clusters: z.union([z.number(), z.literal('auto')]).refine((val) => {
-        if (val === 'auto') return true;
-        return val <= navigator.hardwareConcurrency;
-      }, "Can not spawn more clusters than available CPU's"),
     }),
   }),
   drivers: z.object({

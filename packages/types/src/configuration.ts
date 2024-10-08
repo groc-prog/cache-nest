@@ -55,19 +55,6 @@ export interface ApiConfiguration {
        */
       apiKeys: string[];
     };
-    clustering: {
-      /**
-       * Whether to start a cluster of Bun servers.
-       * @default false
-       */
-      enabled: boolean;
-      /**
-       * The number of clusters to spawn. The maximum number of clusters is limited by the
-       * available CPU's of the system.
-       * @default 'auto'
-       */
-      clusters: number | 'auto';
-    };
   };
   drivers: {
     /**
