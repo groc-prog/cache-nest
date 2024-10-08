@@ -28,6 +28,11 @@ export interface ApiConfiguration {
      */
     host: string;
     /**
+     * Whether to expose Swagger documentation on `/swagger`.
+     * @default false
+     */
+    enableSwagger: boolean;
+    /**
      * Cors options.
      * @see {@link https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/cors/index.d.ts|Cors on Github}
      */
@@ -50,11 +55,19 @@ export interface ApiConfiguration {
        */
       apiKeys: string[];
     };
-    /**
-     * Whether to expose Swagger documentation on `/swagger`.
-     * @default false
-     */
-    enableSwagger: boolean;
+    clustering: {
+      /**
+       * Whether to start a cluster of Bun servers.
+       * @default false
+       */
+      enabled: boolean;
+      /**
+       * The number of clusters to spawn. The maximum number of clusters is limited by the
+       * available CPU's of the system.
+       * @default 'auto'
+       */
+      clusters: number | 'auto';
+    };
   };
   drivers: {
     /**

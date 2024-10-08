@@ -10,8 +10,9 @@ import { beforeEach, describe, expect, mock, it, jest, spyOn, type Mock } from '
 import { merge } from 'lodash-es';
 import os from 'os';
 
+import { OpenTelemetryExporter, type ApiConfiguration } from '@cache-nest/types';
+
 import { API_CONFIG_DEFAULTS, getApiConfiguration } from '@/setup';
-import { OpenTelemetryExporter, type ApiConfiguration } from '@/types/configuration';
 
 mock.module('fs-extra', () => ({
   default: {

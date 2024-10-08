@@ -107,4 +107,5 @@ elysiaServer.listen(
     globalLogger.info(`🚀 Server ready at ${bunServer.hostname}:${bunServer.port}`);
   },
 );
+
 export type App = typeof elysiaServer;

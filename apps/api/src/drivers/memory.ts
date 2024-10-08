@@ -12,6 +12,7 @@ import {
   type DeepPartial,
   type DriverResourceUsage,
   type Identifier,
+  type ApiConfiguration,
 } from '@cache-nest/types';
 
 import { BaseDriver } from '@/drivers/base';
@@ -20,7 +21,6 @@ import { LRUPolicy } from '@/policies/lru';
 import { MRUPolicy } from '@/policies/mru';
 import { RRPolicy } from '@/policies/rr';
 import type { CreateCache } from '@/types/cache';
-import type { ApiConfiguration } from '@/types/configuration';
 import { ApiError } from '@/utils/errors';
 import { extensionCodec } from '@/utils/msgpack';
 import {

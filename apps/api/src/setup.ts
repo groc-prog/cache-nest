@@ -19,9 +19,8 @@ import os from 'os';
 import path from 'path';
 import { z } from 'zod';
 
-import type { DeepReadonly } from '@cache-nest/types';
+import { type ApiConfiguration, type DeepReadonly, OpenTelemetryExporter } from '@cache-nest/types';
 
-import { type ApiConfiguration, OpenTelemetryExporter } from '@/types/configuration';
 import logger from '@/utils/logger';
 
 const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
@@ -31,6 +30,7 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
   server: {
     port: 3000,
     host: '0.0.0.0',
+    enableSwagger: false,
     cors: {
       origin: '*',
     },
@@ -38,7 +38,10 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<ApiConfiguration> = {
       enabled: false,
       apiKeys: [],
     },
-    enableSwagger: false,
+    clustering: {
+      enabled: false,
+      clusters: 'auto',
+    },
   },
   drivers: {
     memory: {
@@ -127,6 +130,7 @@ const ApiConfigurationValidator = z.object({
   server: z.object({
     port: z.number(),
     host: z.string(),
+    enableSwagger: z.boolean(),
     cors: z.object({
       origin: z.union([z.boolean(), z.string(), z.array(z.boolean()), z.array(z.string())]),
     }),
@@ -134,7 +138,13 @@ const ApiConfigurationValidator = z.object({
       enabled: z.boolean(),
       apiKeys: z.array(z.string()),
     }),
-    enableSwagger: z.boolean(),
+    clustering: z.object({
+      enabled: z.boolean(),
+      clusters: z.union([z.number(), z.literal('auto')]).refine((val) => {
+        if (val === 'auto') return true;
+        return val <= navigator.hardwareConcurrency;
+      }, "Can not spawn more clusters than available CPU's"),
+    }),
   }),
   drivers: z.object({
     memory: z.object({

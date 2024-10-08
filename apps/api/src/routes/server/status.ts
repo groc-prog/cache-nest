@@ -41,10 +41,9 @@ export default (app: App) =>
             [Policy.LRU]: PolicyResourceUsage,
             [Policy.MRU]: PolicyResourceUsage,
             [Policy.RR]: PolicyResourceUsage,
-            // TODO: Uncomment remaining policies when implemented
-            // [Policy.LFU]: PolicyResourceUsage,
-            // [Policy.MFU]: PolicyResourceUsage,
-            // [Policy.FIFO]: PolicyResourceUsage,
+            [Policy.LFU]: PolicyResourceUsage,
+            [Policy.MFU]: PolicyResourceUsage,
+            [Policy.FIFO]: PolicyResourceUsage,
           }),
         }),
       },
