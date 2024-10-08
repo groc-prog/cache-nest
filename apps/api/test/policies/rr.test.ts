@@ -95,6 +95,17 @@ describe('RRPolicy', () => {
     });
   });
 
+  describe('.hit()', () => {
+    it('should be a noop', () => {
+      policy.setMockedCacheKeys(['i318rbr23ht2tk2', 'kjsdu238dh9aeb2']);
+      expect(policy.cacheKeys.size).toBe(2);
+
+      policy.hit();
+
+      expect(policy.cacheKeys.size).toBe(2);
+    });
+  });
+
   describe('.evict()', () => {
     it('should evict a random hash', () => {
       const hashes = ['i318rbr23ht2tk2', 'kjsdu238dh9aeb2'];

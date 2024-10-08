@@ -119,6 +119,19 @@ describe('FIFOPolicy', () => {
     });
   });
 
+  describe('.hit()', () => {
+    it('should be a noop', () => {
+      policy.setMockedQueue();
+      expect(policy.queue).toHaveLength(3);
+      expect(policy.hashes.size).toBe(3);
+
+      policy.hit();
+
+      expect(policy.queue).toHaveLength(3);
+      expect(policy.hashes.size).toBe(3);
+    });
+  });
+
   describe('.evict()', () => {
     it('should evict the hash which has been added to the queue first', () => {
       policy.setMockedQueue();
