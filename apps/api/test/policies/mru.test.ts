@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, spyOn, jest } from 'bun:test';
 
 import { Driver } from '@cache-nest/types';
 
-import { MRUNode, MRUPolicy } from '@/policies/mru';
+import { MRUPolicy } from '@/policies/mru';
+import { Node } from '@/utils/linked-list';
 
 class TestMRUPolicy extends MRUPolicy {
   get keyOrder() {
@@ -10,52 +11,32 @@ class TestMRUPolicy extends MRUPolicy {
   }
 
   get mostRecentlyUsed() {
-    return this._mostRecentlyUsed;
+    return this._linkedList.mostRecentlyUsed;
   }
 
   get leastRecentlyUsed() {
-    return this._leastRecentlyUsed;
+    return this._linkedList.leastRecentlyUsed;
   }
 
-  get cacheKeyMap() {
-    return this._cacheKeyMap;
+  get nodeMap() {
+    return this._linkedList.nodeMap;
   }
 
   setMockedKeyOrder(order: string[]) {
     this._keyOrder = order;
   }
 
-  setMockedCacheKeyMap(map: Record<string, MRUNode>) {
+  setMockedCacheKeyMap(map: Record<string, Node>) {
     Object.keys(map).forEach((hash) => {
-      this._cacheKeyMap.set(hash, map[hash] as MRUNode);
+      this._linkedList.nodeMap.set(hash, map[hash] as Node);
     });
-  }
-
-  setMockedMostRecentlyUsedNode(node: MRUNode) {
-    this._mostRecentlyUsed = node;
-  }
-
-  setMockedLeastRecentlyUsedNode(node: MRUNode) {
-    this._leastRecentlyUsed = node;
   }
 
   setMockedNodes() {
-    const node1 = new MRUNode('i318rbr23ht2tk2');
-    const node2 = new MRUNode('kjsdu238dh9aeb2');
-    const node3 = new MRUNode('8hisa6rwe2t4n');
+    this._linkedList.add('i318rbr23ht2tk2');
+    this._linkedList.add('kjsdu238dh9aeb2');
+    this._linkedList.add('8hisa6rwe2t4n');
 
-    node1.next = node2;
-    node2.prev = node1;
-    node2.next = node3;
-    node3.prev = node2;
-
-    this.setMockedLeastRecentlyUsedNode(node1);
-    this.setMockedMostRecentlyUsedNode(node3);
-    this.setMockedCacheKeyMap({
-      i318rbr23ht2tk2: node1,
-      kjsdu238dh9aeb2: node2,
-      '8hisa6rwe2t4n': node3,
-    });
     this.setMockedKeyOrder(['i318rbr23ht2tk2', 'kjsdu238dh9aeb2', '8hisa6rwe2t4n']);
   }
 }
@@ -80,10 +61,10 @@ describe('MRUPolicy', () => {
   describe('.track()', () => {
     it('should register the hash with the other cache keys', () => {
       policy.track('i318rbr23ht2tk2');
-      expect(policy.cacheKeyMap.size).toBe(1);
-      expect(policy.cacheKeyMap.has('i318rbr23ht2tk2'));
+      expect(policy.nodeMap.size).toBe(1);
+      expect(policy.nodeMap.has('i318rbr23ht2tk2'));
 
-      let node1 = policy.cacheKeyMap.get('i318rbr23ht2tk2');
+      let node1 = policy.nodeMap.get('i318rbr23ht2tk2');
       expect(node1?.key).toBe('i318rbr23ht2tk2');
       expect(node1?.prev).toBeNull();
       expect(node1?.next).toBeNull();
@@ -93,11 +74,11 @@ describe('MRUPolicy', () => {
       expect(policy.keyOrder).toContain('i318rbr23ht2tk2');
 
       policy.track('kjsdu238dh9aeb2');
-      expect(policy.cacheKeyMap.size).toBe(2);
-      expect(policy.cacheKeyMap.has('kjsdu238dh9aeb2'));
+      expect(policy.nodeMap.size).toBe(2);
+      expect(policy.nodeMap.has('kjsdu238dh9aeb2'));
 
-      node1 = policy.cacheKeyMap.get('i318rbr23ht2tk2');
-      const node2 = policy.cacheKeyMap.get('kjsdu238dh9aeb2');
+      node1 = policy.nodeMap.get('i318rbr23ht2tk2');
+      const node2 = policy.nodeMap.get('kjsdu238dh9aeb2');
       expect(node2?.key).toBe('kjsdu238dh9aeb2');
       expect(node2?.prev?.key).toBe('i318rbr23ht2tk2');
       expect(node2?.next).toBeNull();
@@ -111,19 +92,19 @@ describe('MRUPolicy', () => {
 
     it('should not add duplicate hashes', () => {
       policy.track('i318rbr23ht2tk2');
-      expect(policy.cacheKeyMap.size).toBe(1);
-      expect(policy.cacheKeyMap.has('i318rbr23ht2tk2'));
+      expect(policy.nodeMap.size).toBe(1);
+      expect(policy.nodeMap.has('i318rbr23ht2tk2'));
 
       policy.track('i318rbr23ht2tk2');
-      expect(policy.cacheKeyMap.size).toBe(1);
+      expect(policy.nodeMap.size).toBe(1);
     });
 
     it('should do nothing if the hash is already been tracked', () => {
-      const setSpy = spyOn(policy.cacheKeyMap, 'set');
+      const setSpy = spyOn(policy.nodeMap, 'set');
 
       policy.track('i318rbr23ht2tk2');
       expect(setSpy).toHaveBeenCalledTimes(1);
-      expect(setSpy).toHaveBeenNthCalledWith(1, 'i318rbr23ht2tk2', expect.any(MRUNode));
+      expect(setSpy).toHaveBeenNthCalledWith(1, 'i318rbr23ht2tk2', expect.any(Node));
 
       policy.track('i318rbr23ht2tk2');
       expect(setSpy).toHaveBeenCalledTimes(1);
@@ -133,45 +114,45 @@ describe('MRUPolicy', () => {
   describe('.stopTracking()', () => {
     it('should remove the hash from the state', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       policy.stopTracking('kjsdu238dh9aeb2');
-      expect(policy.cacheKeyMap.size).toBe(2);
+      expect(policy.nodeMap.size).toBe(2);
       expect(policy.keyOrder).toHaveLength(2);
-      expect(policy.cacheKeyMap.has('kjsdu238dh9aeb2')).toBeFalse();
+      expect(policy.nodeMap.has('kjsdu238dh9aeb2')).toBeFalse();
       expect(policy.mostRecentlyUsed?.key).toBe('8hisa6rwe2t4n');
       expect(policy.leastRecentlyUsed?.key).toBe('i318rbr23ht2tk2');
     });
 
     it('should shift other nodes if the least recently used node stops being tracked', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       policy.stopTracking('i318rbr23ht2tk2');
-      expect(policy.cacheKeyMap.size).toBe(2);
+      expect(policy.nodeMap.size).toBe(2);
       expect(policy.keyOrder).toHaveLength(2);
-      expect(policy.cacheKeyMap.has('i318rbr23ht2tk2')).toBeFalse();
+      expect(policy.nodeMap.has('i318rbr23ht2tk2')).toBeFalse();
       expect(policy.mostRecentlyUsed?.key).toBe('8hisa6rwe2t4n');
       expect(policy.leastRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
     });
 
     it('should shift other nodes if the most recently used node stops being tracked', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       policy.stopTracking('8hisa6rwe2t4n');
-      expect(policy.cacheKeyMap.size).toBe(2);
+      expect(policy.nodeMap.size).toBe(2);
       expect(policy.keyOrder).toHaveLength(2);
-      expect(policy.cacheKeyMap.has('8hisa6rwe2t4n')).toBeFalse();
+      expect(policy.nodeMap.has('8hisa6rwe2t4n')).toBeFalse();
       expect(policy.mostRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
       expect(policy.leastRecentlyUsed?.key).toBe('i318rbr23ht2tk2');
     });
 
     it('should do nothing if the hash is not being tracked', () => {
-      const deleteSpy = spyOn(policy.cacheKeyMap, 'delete');
+      const deleteSpy = spyOn(policy.nodeMap, 'delete');
 
       policy.stopTracking('kjsdu238dh9aeb2');
       expect(deleteSpy).not.toHaveBeenCalled();
@@ -181,11 +162,11 @@ describe('MRUPolicy', () => {
   describe('.hit()', () => {
     it('should move the node up to most recently used node in the internal state', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       policy.hit('kjsdu238dh9aeb2');
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
       expect(policy.mostRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
       expect(policy.leastRecentlyUsed?.key).toBe('i318rbr23ht2tk2');
@@ -195,11 +176,11 @@ describe('MRUPolicy', () => {
 
     it('should shift the least recently used node correctly', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       policy.hit('i318rbr23ht2tk2');
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
       expect(policy.mostRecentlyUsed?.key).toBe('i318rbr23ht2tk2');
       expect(policy.leastRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
@@ -209,11 +190,11 @@ describe('MRUPolicy', () => {
 
     it('should not shift anything if the hit hash is the most recently used hash', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       policy.hit('kjsdu238dh9aeb2');
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
       expect(policy.mostRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
       expect(policy.leastRecentlyUsed?.key).toBe('i318rbr23ht2tk2');
@@ -225,12 +206,12 @@ describe('MRUPolicy', () => {
   describe('.evict()', () => {
     it('should remove the most recently used hash from the state and return it', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       const hash = policy.evict();
       expect(hash).toBe('8hisa6rwe2t4n');
-      expect(policy.cacheKeyMap.size).toBe(2);
+      expect(policy.nodeMap.size).toBe(2);
       expect(policy.keyOrder).toHaveLength(2);
       expect(policy.mostRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
       expect(policy.mostRecentlyUsed?.prev?.key).toBe('i318rbr23ht2tk2');
@@ -243,7 +224,7 @@ describe('MRUPolicy', () => {
       const clearTTLSpy = spyOn(policy, 'clearTTL');
 
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       const hash = policy.evict();
@@ -260,7 +241,7 @@ describe('MRUPolicy', () => {
   describe('.getSnapshot()', () => {
     it('should generate a snapshot of the internal state', () => {
       policy.setMockedNodes();
-      expect(policy.cacheKeyMap.size).toBe(3);
+      expect(policy.nodeMap.size).toBe(3);
       expect(policy.keyOrder).toHaveLength(3);
 
       const snapshot = policy.getSnapshot();
@@ -275,9 +256,9 @@ describe('MRUPolicy', () => {
       const validHashes = new Set(['i318rbr23ht2tk2', 'kjsdu238dh9aeb2']);
       const allHashes = ['i318rbr23ht2tk2', 'kjsdu238dh9aeb2', '8hisa6rwe2t4n'];
 
-      expect(policy.cacheKeyMap.size).toBe(0);
+      expect(policy.nodeMap.size).toBe(0);
       policy.applySnapshot(validHashes, { keyOrder: allHashes });
-      expect(policy.cacheKeyMap.size).toBe(2);
+      expect(policy.nodeMap.size).toBe(2);
       expect(policy.keyOrder).toHaveLength(2);
       expect(policy.mostRecentlyUsed?.key).toBe('kjsdu238dh9aeb2');
       expect(policy.mostRecentlyUsed?.prev?.key).toBe('i318rbr23ht2tk2');
