@@ -190,6 +190,7 @@ export class MemoryDriver extends BaseDriver {
 
         const cache = this._policies[policy].generateCache<T>(identifier, partialCache);
         await this._ensureCacheSizeLimit(policy, cache);
+        if (force) this._policies[policy].stopTracking(hash);
         this._policies[policy].track(hash);
 
         await this._mutexes[policy].runExclusive(() => {
