@@ -48,6 +48,14 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<UnparsedApiConfiguration> = {
     memory: {
       maxSize: '20%',
       evictFromOthers: false,
+      policies: {
+        slru: {
+          segments: 3,
+        },
+        smru: {
+          segments: 3,
+        },
+      },
       recovery: {
         enabled: false,
         snapshotFilePath: '.cache-nest/memory-driver.dat',
@@ -152,6 +160,14 @@ const ApiConfigurationValidator = z.object({
     memory: z.object({
       maxSize: NumberOrPercentageValidator,
       evictFromOthers: z.boolean(),
+      policies: z.object({
+        slru: z.object({
+          segments: z.number().min(2),
+        }),
+        smru: z.object({
+          segments: z.number().min(2),
+        }),
+      }),
       recovery: z.object({
         enabled: z.boolean(),
         snapshotFilePath: z.string().refine((filePath) => filePath.endsWith('.dat'), 'File must be a .dat file'),
