@@ -14,7 +14,7 @@ import {
   type ApiConfiguration,
 } from '@cache-nest/types';
 
-import { BaseDriver } from '@/drivers/base';
+import { NativeBaseDriver } from '@/drivers/base';
 import type { BasePolicy } from '@/policies/base';
 import { FIFOPolicy } from '@/policies/fifo';
 import { LFUPolicy } from '@/policies/lfu';
@@ -44,7 +44,7 @@ type Snapshot = {
   };
 };
 
-export class MemoryDriver extends BaseDriver {
+export class MemoryDriver extends NativeBaseDriver {
   private _caches: Record<Policy, Map<string, Cache<unknown>>> = {
     [Policy.LRU]: new Map(),
     [Policy.MRU]: new Map(),
@@ -190,6 +190,9 @@ export class MemoryDriver extends BaseDriver {
 
         const cache = this._policies[policy].generateCache<T>(identifier, partialCache);
         await this._ensureCacheSizeLimit(policy, cache);
+
+        // Since calling track for a hash which already exists does nothing, we first need to stop
+        // tracking the hash, otherwise we can not reset the state for the hash inside the policy
         if (force) this._policies[policy].stopTracking(hash);
         this._policies[policy].track(hash);
 
@@ -281,6 +284,9 @@ export class MemoryDriver extends BaseDriver {
 
       const resourceUsage = Object.keys(this._caches).reduce(
         (obj, policy) => {
+          // Calculate the size of the current policy by getting the byte length of the stringified cache
+          // This will always take into account that the map in which the caches are stored take up some
+          // amount of memory by default, but this amount is so small that i could not care less about it
           const size = Buffer.byteLength(JSON.stringify([...this._caches[policy as Policy].values()]));
           const relativeSize = (size * 100) / this._config.maxSize;
 
@@ -322,6 +328,8 @@ export class MemoryDriver extends BaseDriver {
       async (span) => {
         this._logger.verbose('Ensuring cache size limits');
 
+        // If the cache is bigger in size that the total available memory, there is no way for us
+        // to ever store it, so we just give up
         const cacheSize = Buffer.byteLength(JSON.stringify(cache));
         if (cacheSize > this._config.maxSize)
           throw new ApiError({ message: 'Cache too big', detail: 'Cache size exceeds maximum', status: 409 });
@@ -337,6 +345,7 @@ export class MemoryDriver extends BaseDriver {
         let hashToEvict = await this._mutexes[policy].runExclusive(() => {
           let hash: string | null = null;
 
+          // Try to evict as many caches as necessary to make room for the new cache
           while (this._getCurrentCacheSize() > currentMaxSize) {
             hash = this._policies[policy].evict();
 
@@ -361,6 +370,8 @@ export class MemoryDriver extends BaseDriver {
           return hash;
         });
 
+        // If we have enough room for the new cache, we can stop
+        // Otherwise we either throw a error or evict from other policies if allowed to
         if (hashToEvict !== null) return;
         if (hashToEvict === null && !this._config.evictFromOthers) {
           this._logger.warn(`Policy ${policy} can not evict any caches`);
@@ -409,6 +420,7 @@ export class MemoryDriver extends BaseDriver {
           }
         }
 
+        // If we don't have enough space at this point, we just accept that we lost and throw a error
         this._logger.error(`Failed to evict any caches from all policies, size limit check failed`);
         if (hashToEvict === null)
           throw new ApiError({
@@ -489,6 +501,9 @@ export class MemoryDriver extends BaseDriver {
                   const cache = snapshot.caches[policy as Policy].get(hash);
                   if (cache === undefined) continue;
 
+                  // Since we don't know how long it has been since the service restarted, we have to check each entry
+                  // for a TTL value
+                  // This operation is allowed to take some time, since this will only run once on startup
                   if (cache.options.ttl && Date.now() > cache.ctime + cache.options.ttl) {
                     this._logger.verbose(`TTL for cache ${hash} expired, not recovering cache`);
                     continue;
@@ -500,6 +515,7 @@ export class MemoryDriver extends BaseDriver {
                   recovered.total += 1;
                   recovered[policy as Policy] += 1;
 
+                  // For all caches remaining, we have to register all TTL counters and invalidation identifiers again
                   if (cache.options.ttl) this._policies[policy as Policy].registerTTL(hash, cache.options.ttl);
                   if (cache.options.invalidatedBy.length > 0) {
                     this._logger.debug(

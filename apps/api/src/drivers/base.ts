@@ -66,7 +66,9 @@ export abstract class BaseDriver {
    * of the used cache size.
    */
   abstract resourceUsage(): MaybePromise<DriverResourceUsage>;
+}
 
+export abstract class NativeBaseDriver extends BaseDriver {
   /**
    * Checks if the given cache can be inserted without overstepping the defined maximum cache size. If not
    * enough space is left over, it attempts to evict caches from the defined policy. If no caches can be

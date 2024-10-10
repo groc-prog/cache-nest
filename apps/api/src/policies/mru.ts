@@ -71,6 +71,10 @@ export class MRUPolicy extends BasePolicy {
 
         const index = this._keyOrder.findIndex((key) => key === hash);
         if (index !== -1) this._keyOrder.splice(index, 1);
+        else
+          this._logger.warn(
+            `Hash ${hash} is only partially tracked. If you see this in production, please open a issue at https://github.com/groc-prog/cache-nest`,
+          );
 
         span.end();
       },

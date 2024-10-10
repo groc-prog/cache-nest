@@ -3,6 +3,8 @@ import { env } from 'bun';
 import { format, transports, createLogger } from 'winston';
 
 const traceFormat = format((info) => {
+  // Expose the current span to the logger context
+  // If there is no span available, we can just skip ahead
   const span = trace.getActiveSpan();
   if (!span) return info;
 

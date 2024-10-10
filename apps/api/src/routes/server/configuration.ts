@@ -61,32 +61,6 @@ export default (app: App) =>
                 description:
                   'Whether to evict caches from other policies if a new cache is too big for storage even after all existing caches from the current policy have been evicted',
               }),
-              policies: t.Object({
-                slru: t.Object(
-                  {
-                    segments: t.Number({
-                      description: 'The number of segments used.',
-                      default: 3,
-                      minimum: 2,
-                    }),
-                  },
-                  {
-                    description: 'Options specific to the SLRU policy.',
-                  },
-                ),
-                smru: t.Object(
-                  {
-                    segments: t.Number({
-                      description: 'The number of segments used.',
-                      default: 3,
-                      minimum: 2,
-                    }),
-                  },
-                  {
-                    description: 'Options specific to the MLRU policy.',
-                  },
-                ),
-              }),
               recovery: t.Object({
                 enabled: t.Boolean({
                   default: false,

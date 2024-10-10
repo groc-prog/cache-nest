@@ -12,6 +12,22 @@ export enum OpenTelemetryExporter {
   HTTP = 'http',
 }
 
+export interface SLRUPolicyConfiguration {
+  /**
+   * The number of segments used.
+   * @default 3
+   */
+  segments: number;
+}
+
+export interface SMRUPolicyConfiguration {
+  /**
+   * The number of segments used.
+   * @default 3
+   */
+  segments: number;
+}
+
 /**
  * API configuration for server/tracing/metrics/etc before parsing.
  */
@@ -73,28 +89,6 @@ export interface UnparsedApiConfiguration {
        * @default false
        */
       evictFromOthers: boolean;
-      policies: {
-        /**
-         * Options specific to the SLRU policy.
-         */
-        slru: {
-          /**
-           * The number of segments used.
-           * @default 3
-           */
-          segments: number;
-        };
-        /**
-         * Options specific to the SMRU policy.
-         */
-        smru: {
-          /**
-           * The number of segments used.
-           * @default 3
-           */
-          segments: number;
-        };
-      };
       recovery: {
         /**
          * Whether to enable cache persistence. Enabling this will periodically persist a snapshot of all

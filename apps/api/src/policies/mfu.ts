@@ -62,11 +62,17 @@ export class MFUPolicy extends BasePolicy {
       },
       (span) => {
         let hits = this._cacheKeyMap.get(hash);
-        if (hits === undefined) hits = -1;
+        if (hits === undefined) {
+          this._logger.warn(`Hash ${hash} is not being tracked, can not stop tracking`);
+          span.end();
+          return;
+        }
 
         const index = this._keyOrderMap.get(hits)?.findIndex((key) => key === hash);
-        if (hits === undefined || index === -1 || index === undefined) {
-          this._logger.warn(`Hash ${hash} is not being tracked, can not stop tracking`);
+        if (index === -1 || index === undefined) {
+          this._logger.warn(
+            `Hash ${hash} is only partially tracked. If you see this in production, please open a issue at https://github.com/groc-prog/cache-nest`,
+          );
           span.end();
           return;
         }
@@ -99,11 +105,17 @@ export class MFUPolicy extends BasePolicy {
       },
       (span) => {
         let hits = this._cacheKeyMap.get(hash);
-        if (hits === undefined) hits = -1;
+        if (hits === undefined) {
+          this._logger.warn(`Hash ${hash} is not being tracked, can not increase hit count`);
+          span.end();
+          return;
+        }
 
         const index = this._keyOrderMap.get(hits)?.findIndex((key) => key === hash);
         if (index === -1 || index === undefined) {
-          this._logger.warn(`Hash ${hash} is not being tracked, can not increase hit count`);
+          this._logger.warn(
+            `Hash ${hash} is only partially tracked. If you see this in production, please open a issue at https://github.com/groc-prog/cache-nest`,
+          );
           span.end();
           return;
         }
@@ -144,7 +156,6 @@ export class MFUPolicy extends BasePolicy {
 
         if (this._keyOrderMap.get(this._highestHitCount)?.length === 0) {
           this._keyOrderMap.delete(this._highestHitCount);
-
           this._highestHitCount = max(Array.from(this._keyOrderMap.keys())) || 0;
         }
 
