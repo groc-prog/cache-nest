@@ -24,7 +24,7 @@ export abstract class BaseDriver {
   abstract init(): MaybePromise<void>;
 
   /**
-   * Returns a `cache entry` or `null` for the given identifier.
+   * Returns a `cache entry` or `null` if no cache exists for the given identifier.
    * @abstract
    * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
@@ -35,7 +35,7 @@ export abstract class BaseDriver {
 
   /**
    * Sets a new cache entry. If the entry with the given identifier already exists, this method is a
-   * no-op. This can be changed by setting `force` to true, which will overwrite the existing entry.
+   * no-op. This can be changed by setting `force` to `true`, which will overwrite the existing entry.
    * @abstract
    * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
@@ -69,10 +69,21 @@ export abstract class BaseDriver {
 }
 
 export abstract class NativeBaseDriver extends BaseDriver {
+  protected _isInitialized: boolean = false;
+
   /**
-   * Checks if the given cache can be inserted without overstepping the defined maximum cache size. If not
-   * enough space is left over, it attempts to evict caches from the defined policy. If no caches can be
-   * evicted from the defined policy either, caches from other policies will be evicted.
+   * Whether the driver was initialized correctly.
+   * @returns {boolean} `true` if the driver initialized without any issues and `false` otherwise.
+   */
+  get isInitialized(): boolean {
+    return this._isInitialized;
+  }
+
+  /**
+   * Checks if the given cache can be inserted without overstepping the defined maximum cache size. If there
+   * is not enough space left over, it attempts to evict caches from the defined policy. If no caches can be
+   * evicted from the defined policy either, a error will be throw. This can be changed by setting `evictFromOthers`
+   * to `true`, then caches from other policies will be evicted until no more evictions can be made.
    * @abstract
    * @protected
    * @template T - The expected type of the cache data.
@@ -91,7 +102,7 @@ export abstract class NativeBaseDriver extends BaseDriver {
   protected abstract _getCurrentCacheSize(): MaybePromise<number>;
 
   /**
-   * Apply the last recorded snapshot and sets up a timer for periodically updating the snapshot.
+   * Apply the last recorded snapshot and set up a timer for periodically updating the snapshot.
    * @abstract
    * @protected
    */
