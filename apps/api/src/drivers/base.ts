@@ -26,27 +26,25 @@ export abstract class BaseDriver {
   /**
    * Returns a `cache entry` or `null` if no cache exists for the given identifier.
    * @abstract
-   * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
    * @param {Policy} policy - The eviction policy the entry uses.
-   * @returns {MaybePromise<Cache<T> | null>} The cache entry or null.
+   * @returns {MaybePromise<Cache | null>} The cache entry or null.
    */
-  abstract get<T>(identifier: Identifier, policy: Policy): MaybePromise<Cache<T> | null>;
+  abstract get(identifier: Identifier, policy: Policy): MaybePromise<Cache | null>;
 
   /**
    * Sets a new cache entry. If the entry with the given identifier already exists, this method is a
    * no-op. This can be changed by setting `force` to `true`, which will overwrite the existing entry.
    * @abstract
-   * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
    * @param {Policy} policy - The eviction policy the entry uses.
    * @param {boolean} [force] - Whether to overwrite existing entries.
    * @returns {MaybePromise<boolean>} `true` if the entry has been set, `false` if it has been skipped.
    */
-  abstract set<T>(
+  abstract set(
     identifier: Identifier,
     policy: Policy,
-    partialCache: CreateCache<T>,
+    partialCache: CreateCache,
     force?: boolean,
   ): MaybePromise<boolean>;
 
@@ -86,25 +84,17 @@ export abstract class NativeBaseDriver extends BaseDriver {
    * to `true`, then caches from other policies will be evicted until no more evictions can be made.
    * @abstract
    * @protected
-   * @template T - The expected type of the cache data.
    * @throws {ApiError} If the cache is bigger than the maximum cache size.
    * @throws {ApiError} If no more caches can be evicted from the current policy. Only is thrown
    *  if `evictFromOthers` is set to `false`.
    * @param {Policy} policy - The policy to evict caches from first.
-   * @param {Cache<T>} cache - The cache to insert.
+   * @param {Cache} cache - The cache to insert.
    */
-  protected abstract _ensureCacheSizeLimit<T>(policy: Policy, cache: Cache<T>): MaybePromise<void>;
+  protected abstract _ensureCacheSizeLimit(policy: Policy, cache: Cache): MaybePromise<void>;
 
   /**
    * Returns the current size of all caches combined.
    * @returns {MaybePromise<number>} The size of all caches combined.
    */
   protected abstract _getCurrentCacheSize(): MaybePromise<number>;
-
-  /**
-   * Apply the last recorded snapshot and set up a timer for periodically updating the snapshot.
-   * @abstract
-   * @protected
-   */
-  protected abstract _initSnapshots(): MaybePromise<void>;
 }

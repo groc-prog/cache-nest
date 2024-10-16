@@ -91,12 +91,11 @@ export abstract class BasePolicy extends EventEmitter {
   /**
    * Creates a new cache with a newly generated identifier.
    * @abstract
-   * @template T - The expected type of the cache data.
    * @param {Identifier} identifier - The cache identifier.
-   * @param {CreateCache<T>} partialCache - The cache to set.
-   * @returns {MaybePromise<Cache<T>>} The cache.
+   * @param {CreateCache} partialCache - The cache to set.
+   * @returns {MaybePromise<Cache>} The cache.
    */
-  generateCache<T>(identifier: Identifier, partialCache: CreateCache<T>): Cache<T> {
+  generateCache(identifier: Identifier, partialCache: CreateCache): Cache {
     return tracer.startActiveSpan(
       'GenerateCache',
       {
@@ -111,7 +110,7 @@ export abstract class BasePolicy extends EventEmitter {
         span.setAttribute('cache.hash', hash);
 
         const timestamp = Date.now();
-        const cache: Cache<T> = merge(
+        const cache: Cache = merge(
           {},
           {
             identifier,
