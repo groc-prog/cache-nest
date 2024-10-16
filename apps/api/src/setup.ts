@@ -58,11 +58,6 @@ export const API_CONFIG_DEFAULTS: DeepReadonly<UnparsedApiConfiguration> = {
       maxSize: '20%',
       mountPath: '.cache-nest/file-system',
       evictFromOthers: false,
-      recovery: {
-        enabled: false,
-        snapshotFilePath: '.cache-nest/file-system-driver.dat',
-        snapshotInterval: 3600,
-      },
     },
   },
   tracing: {
@@ -162,11 +157,6 @@ const ApiConfigurationValidator = z.object({
       maxSize: NumberOrPercentageValidator,
       mountPath: z.string(),
       evictFromOthers: z.boolean(),
-      recovery: z.object({
-        enabled: z.boolean(),
-        snapshotFilePath: z.string().refine((filePath) => filePath.endsWith('.dat'), 'File must be a .dat file'),
-        snapshotInterval: z.number().positive(),
-      }),
     }),
   }),
   tracing: z.object({

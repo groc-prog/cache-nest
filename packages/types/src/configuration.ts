@@ -127,25 +127,6 @@ export interface UnparsedApiConfiguration {
        * @default false
        */
       evictFromOthers: boolean;
-      recovery: {
-        /**
-         * Whether to enable cache persistence. Enabling this will periodically persist a snapshot of all
-         * caches to the defined file. If the service stops unexpectedly, the snapshot will be applied on the
-         * next startup.
-         * @default false
-         */
-        enabled: boolean;
-        /**
-         * The path to the snapshot file.
-         * @default '.cache-nest/file-system-driver.dat'
-         */
-        snapshotFilePath: string;
-        /**
-         * The interval in seconds at which a snapshot is created.
-         * @default 3600
-         */
-        snapshotInterval: number;
-      };
     };
   };
   tracing: {

@@ -109,12 +109,13 @@ export class MemoryDriver extends NativeBaseDriver {
         if (this._config.recovery.enabled) await this._initSnapshots();
 
         this._logger.info(`${capitalize(this.driver)} driver initialized`);
+        this._isInitialized = true;
         span.end();
       },
     );
   }
 
-  async get<T>(identifier: Identifier, policy: Policy): Promise<Cache<T> | null> {
+  async get(identifier: Identifier, policy: Policy): Promise<Cache | null> {
     return tracer.startActiveSpan(
       'GetCache',
       {
@@ -129,9 +130,9 @@ export class MemoryDriver extends NativeBaseDriver {
         span.setAttribute('cache.hash', hash);
 
         this._logger.info(`Getting cache for ${hash}`);
-        const cache = this._caches[policy].get(hash) as Cache<T>;
+        const cache = this._caches[policy].get(hash);
 
-        if (cache == null) {
+        if (cache === undefined) {
           this._logger.info(`No cache for ${hash} found in ${policy} cache`);
           cacheMissesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
           span.end();
@@ -142,7 +143,7 @@ export class MemoryDriver extends NativeBaseDriver {
         const updatedCache = await this._mutexes[policy].runExclusive(() => {
           this._policies[policy].hit(hash);
 
-          const updated: Cache<T> = merge({}, cache, {
+          const updated: Cache = merge({}, cache, {
             atime: Date.now(),
             hits: cache.hits + 1,
           });
@@ -163,12 +164,7 @@ export class MemoryDriver extends NativeBaseDriver {
     );
   }
 
-  async set<T>(
-    identifier: Identifier,
-    policy: Policy,
-    partialCache: CreateCache<T>,
-    force?: boolean,
-  ): Promise<boolean> {
+  async set(identifier: Identifier, policy: Policy, partialCache: CreateCache, force?: boolean): Promise<boolean> {
     return tracer.startActiveSpan(
       'SetCache',
       {
@@ -188,15 +184,14 @@ export class MemoryDriver extends NativeBaseDriver {
           return false;
         }
 
-        const cache = this._policies[policy].generateCache<T>(identifier, partialCache);
+        const cache = this._policies[policy].generateCache(identifier, partialCache);
         await this._ensureCacheSizeLimit(policy, cache);
 
         // Since calling track for a hash which already exists does nothing, we first need to stop
         // tracking the hash, otherwise we can not reset the state for the hash inside the policy
-        if (force) this._policies[policy].stopTracking(hash);
-        this._policies[policy].track(hash);
-
         await this._mutexes[policy].runExclusive(() => {
+          if (force) this._policies[policy].stopTracking(hash);
+          this._policies[policy].track(hash);
           this._caches[policy].set(hash, cache);
 
           if (cache.options.invalidatedBy.length > 0) {
@@ -239,9 +234,13 @@ export class MemoryDriver extends NativeBaseDriver {
               const hash = this._policies[policy].generateHash(identifier, false);
               const affectedCaches = this._invalidations[policy].get(hash);
 
-              if (affectedCaches === undefined || affectedCaches.size === 0)
+              invalidateCacheSpan.setAttribute('cache.affected', affectedCaches?.size || 0);
+
+              if (affectedCaches === undefined || affectedCaches.size === 0) {
                 this._logger.verbose(`No caches to evict for identifier ${hash}`);
-              else this._logger.verbose(`Evicting ${affectedCaches.size} caches for identifier ${hash}`);
+                invalidateCacheSpan.end();
+                return;
+              } else this._logger.verbose(`Evicting ${affectedCaches.size} caches for identifier ${hash}`);
 
               invalidateCacheSpan.setAttributes({
                 'cache.affected': affectedCaches?.size || 0,
@@ -249,11 +248,11 @@ export class MemoryDriver extends NativeBaseDriver {
               });
 
               await this._mutexes[policy].runExclusive(() => {
-                affectedCaches?.forEach((cacheHash) => {
+                for (const cacheHash of affectedCaches) {
                   this._logger.debug(`Evicting cache ${cacheHash}`);
                   this._policies[policy].stopTracking(cacheHash);
                   this._caches[policy].delete(cacheHash);
-                });
+                }
 
                 this._invalidations[policy].delete(hash);
               });
@@ -280,7 +279,8 @@ export class MemoryDriver extends NativeBaseDriver {
 
   resourceUsage(): DriverResourceUsage {
     return tracer.startActiveSpan('ResourceUsage', { attributes: { 'cache.driver': this.driver } }, (span) => {
-      const totalRelative = (this._getCurrentCacheSize() * 100) / this._config.maxSize;
+      const currentSize = this._getCurrentCacheSize();
+      const totalRelative = (currentSize * 100) / this._config.maxSize;
 
       const resourceUsage = Object.keys(this._caches).reduce(
         (obj, policy) => {
@@ -299,7 +299,7 @@ export class MemoryDriver extends NativeBaseDriver {
           return obj;
         },
         {
-          total: this._getCurrentCacheSize(),
+          total: currentSize,
           relative: parseFloat(totalRelative.toFixed(6)),
         } as DriverResourceUsage,
       );
@@ -316,7 +316,7 @@ export class MemoryDriver extends NativeBaseDriver {
     }, 0);
   }
 
-  protected async _ensureCacheSizeLimit<T>(policy: Policy, cache: Cache<T>): Promise<void> {
+  protected async _ensureCacheSizeLimit(policy: Policy, cache: Cache): Promise<void> {
     return tracer.startActiveSpan(
       'EnsureCacheSizeLimit',
       {
@@ -327,6 +327,7 @@ export class MemoryDriver extends NativeBaseDriver {
       },
       async (span) => {
         this._logger.verbose('Ensuring cache size limits');
+        const currentCacheSize = this._getCurrentCacheSize();
 
         // If the cache is bigger in size that the total available memory, there is no way for us
         // to ever store it, so we just give up
@@ -335,7 +336,7 @@ export class MemoryDriver extends NativeBaseDriver {
           throw new ApiError({ message: 'Cache too big', detail: 'Cache size exceeds maximum', status: 409 });
 
         const currentMaxSize = this._config.maxSize - cacheSize;
-        if (this._getCurrentCacheSize() <= currentMaxSize) {
+        if (currentCacheSize <= currentMaxSize) {
           this._logger.info('No caches have to be evicted, skipping');
           span.end();
           return;
@@ -346,14 +347,27 @@ export class MemoryDriver extends NativeBaseDriver {
           let hash: string | null = null;
 
           // Try to evict as many caches as necessary to make room for the new cache
-          while (this._getCurrentCacheSize() > currentMaxSize) {
+          while (currentCacheSize > currentMaxSize) {
             hash = this._policies[policy].evict();
 
             if (hash === null) break;
             else {
               this._logger.verbose(`Evicting cache ${hash} from policy ${policy}`);
 
+              const invalidationIdentifiers = this._caches[policy]
+                .get(hash)
+                ?.options.invalidatedBy.map((identifier) => this._policies[policy].generateHash(identifier, false));
               this._caches[policy].delete(hash);
+
+              if (invalidationIdentifiers) {
+                for (const invalidationIdentifier of invalidationIdentifiers) {
+                  const affectedCaches = this._invalidations[policy].get(invalidationIdentifier);
+                  if (affectedCaches === undefined) continue;
+
+                  affectedCaches.delete(hash);
+                }
+              }
+
               totalEvictionsCounter.add(1, {
                 'cache.driver': this.driver,
                 'cache.policy': policy,
@@ -391,13 +405,29 @@ export class MemoryDriver extends NativeBaseDriver {
           hashToEvict = await this._mutexes[remainingPolicy as Policy].runExclusive(() => {
             let hash: string | null = null;
 
-            while (this._getCurrentCacheSize() > currentMaxSize) {
+            while (currentCacheSize > currentMaxSize) {
               hash = this._policies[remainingPolicy as Policy].evict();
 
               if (hash === null) break;
               else {
                 this._logger.verbose(`Evicting cache ${hash} from policy ${remainingPolicies}`);
+
+                const invalidationIdentifiers = this._caches[remainingPolicy as Policy]
+                  .get(hash)
+                  ?.options.invalidatedBy.map((identifier) =>
+                    this._policies[remainingPolicy as Policy].generateHash(identifier, false),
+                  );
                 this._caches[remainingPolicy as Policy].delete(hash);
+
+                if (invalidationIdentifiers) {
+                  for (const invalidationIdentifier of invalidationIdentifiers) {
+                    const affectedCaches = this._invalidations[remainingPolicy as Policy].get(invalidationIdentifier);
+                    if (affectedCaches === undefined) continue;
+
+                    affectedCaches.delete(hash);
+                  }
+                }
+
                 totalEvictionsCounter.add(1, {
                   'cache.driver': this.driver,
                   'cache.policy': remainingPolicy,
@@ -433,7 +463,11 @@ export class MemoryDriver extends NativeBaseDriver {
     );
   }
 
-  protected async _initSnapshots(): Promise<void> {
+  /**
+   * Apply the last recorded snapshot and set up a timer for periodically updating the snapshot.
+   * @private
+   */
+  private async _initSnapshots(): Promise<void> {
     return tracer.startActiveSpan(
       'InitializeSnapshots',
       {
@@ -444,15 +478,15 @@ export class MemoryDriver extends NativeBaseDriver {
       async (span) => {
         this._logger.info('Initializing snapshots');
 
-        const absolutePath = path.resolve(this._config.recovery.snapshotFilePath);
-        const exists = await fse.exists(absolutePath);
+        const snapshotFilePath = path.resolve(this._config.recovery.snapshotFilePath);
+        const exists = await fse.exists(snapshotFilePath);
 
         if (!exists) {
           try {
             this._logger.verbose('Ensuring snapshot file exists');
-            await fse.ensureFile(path.resolve(this._config.recovery.snapshotFilePath));
+            await fse.ensureFile(snapshotFilePath);
           } catch (err) {
-            this._logger.error(`Failed to create snapshot file at ${absolutePath}: `, err);
+            this._logger.error(`Failed to create snapshot file at ${snapshotFilePath}: `, err);
           }
         }
 
@@ -475,8 +509,8 @@ export class MemoryDriver extends NativeBaseDriver {
             };
 
             try {
-              this._logger.verbose(`Loading snapshot file at ${absolutePath}`);
-              let snapshotFile = await fse.readFile(path.resolve(absolutePath));
+              this._logger.verbose(`Loading snapshot file at ${snapshotFilePath}`);
+              let snapshotFile = await fse.readFile(snapshotFilePath);
               if (snapshotFile.length === 0) {
                 this._logger.verbose('No persisted caches, skipping');
                 recoverSnapshotsSpan.setAttributes({
@@ -536,7 +570,7 @@ export class MemoryDriver extends NativeBaseDriver {
                 this._policies[policy as Policy].applySnapshot(validHashes, snapshot.policies[policy as Policy]);
               }
             } catch (err) {
-              this._logger.error(`Failed to apply snapshot file ${absolutePath}: `, err);
+              this._logger.error(`Failed to apply snapshot file ${snapshotFilePath}: `, err);
             }
 
             recoverSnapshotsSpan.setAttributes({
@@ -560,7 +594,7 @@ export class MemoryDriver extends NativeBaseDriver {
               root: true,
               attributes: {
                 'cache.driver': this.driver,
-                'snapshot.path': absolutePath,
+                'snapshot.path': snapshotFilePath,
               },
             },
             async (snapshotSpan) => {
@@ -576,10 +610,10 @@ export class MemoryDriver extends NativeBaseDriver {
                 });
 
                 const encoded = encode(snapshot, { extensionCodec });
-                await fse.writeFile(absolutePath, encoded);
+                await fse.writeFile(snapshotFilePath, encoded);
                 this._logger.info('Snapshot created');
               } catch (err) {
-                this._logger.error(`Failed to update snapshot file ${absolutePath}: `, err);
+                this._logger.error(`Failed to update snapshot file ${snapshotFilePath}: `, err);
               }
 
               snapshotSpan.end();
