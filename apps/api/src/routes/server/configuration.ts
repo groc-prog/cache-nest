@@ -48,6 +48,17 @@ export default (app: App) =>
               default: false,
               description: 'Whether Swagger documentation is exposed on `/swagger` endpoint.',
             }),
+            clustering: t.Object({
+              enabled: t.Boolean({
+                default: false,
+                description: 'Whether to start a single Bun server or a cluster of Bun servers.',
+              }),
+              clusters: t.Number({
+                default: navigator.hardwareConcurrency,
+                description:
+                  "The number of clusters to spawn. The maximum number of clusters is limited by the available CPU's of the system.",
+              }),
+            }),
           }),
           drivers: t.Object({
             memory: t.Object({

@@ -71,6 +71,21 @@ export interface UnparsedApiConfiguration {
        */
       apiKeys: string[];
     };
+    clustering: {
+      /**
+       * Whether to start a cluster of Bun servers.
+       *
+       * **NOTE**: This will disable the memory driver.
+       * @default false
+       */
+      enabled: boolean;
+      /**
+       * The number of clusters to spawn. The maximum number of clusters is limited by the
+       * available CPU's of the system.
+       * @default 'auto'
+       */
+      clusters: number | 'auto';
+    };
   };
   drivers: {
     /**
@@ -176,6 +191,11 @@ export interface UnparsedApiConfiguration {
 }
 
 export interface ApiConfiguration extends UnparsedApiConfiguration {
+  server: {
+    clustering: {
+      clusters: number;
+    } & UnparsedApiConfiguration['server']['clustering'];
+  } & UnparsedApiConfiguration['server'];
   drivers: {
     memory: {
       maxSize: number;

@@ -10,15 +10,16 @@ import { merge } from 'lodash-es';
 import { Driver } from '@cache-nest/types';
 
 import type { BaseDriver } from '@/drivers/base';
+import { FileSystemDriver } from '@/drivers/file-system';
 import { MemoryDriver } from '@/drivers/memory';
 import { getApiConfiguration } from '@/setup';
 import { ApiError } from '@/utils/errors';
 import globalLogger from '@/utils/logger';
 
 const apiConfiguration = await getApiConfiguration();
-// @ts-expect-error
 const cacheDrivers: Record<Driver, BaseDriver> = {
   [Driver.MEMORY]: new MemoryDriver(apiConfiguration.drivers.memory),
+  [Driver.FILE_SYSTEM]: new FileSystemDriver(apiConfiguration.drivers.fileSystem),
 };
 
 for (const driver in cacheDrivers) await cacheDrivers[driver as Driver].init();
@@ -98,6 +99,7 @@ if (apiConfiguration.server.enableSwagger)
       },
     }),
   );
+
 elysiaServer.listen(
   {
     port: apiConfiguration.server.port,
