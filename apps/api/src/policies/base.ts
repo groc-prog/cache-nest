@@ -11,8 +11,13 @@ import { createdCachesCounter, totalEvictionsCounter, tracer, ttlEvictionsCounte
 
 interface Events {
   ttlExpired: (hash: string) => void;
+  ttlCleared: (hash: string) => void;
 }
 
+/**
+ * @emits BasePolicy#ttlExpired
+ * @emits BasePolicy#ttlCleared
+ */
 export abstract class BasePolicy extends EventEmitter {
   policy: Policy;
 
@@ -46,8 +51,7 @@ export abstract class BasePolicy extends EventEmitter {
   abstract stopTracking(hash: string): void;
 
   /**
-   * Updates the tracking of a cache entry. If the cache entry is not found, a cache
-   * miss is recorded.
+   * Updates the tracking of a cache entry.
    * @abstract
    * @param {string} hash - The hash to hit.
    */
@@ -64,8 +68,7 @@ export abstract class BasePolicy extends EventEmitter {
   /**
    * Creates a snapshot of the current state of the policy.
    * @abstract
-   * @returns {unknown} A snapshot of the state which is serializable with
-   *  {@link https://github.com/msgpack/msgpack-javascript|msgpack on Github}.
+   * @returns {unknown} A snapshot of the state.
    */
   abstract getSnapshot(): unknown;
 
@@ -133,8 +136,8 @@ export abstract class BasePolicy extends EventEmitter {
   }
 
   /**
-   * Clears any existing TTL timers.
-   * @param {string} hash - Hash to register the TTL for.
+   * Clears a TTL timer for the given hash.
+   * @param {string} hash - Hash to clear the TTL for.
    */
   clearTTL(hash: string): void {
     tracer.startActiveSpan(
@@ -151,6 +154,13 @@ export abstract class BasePolicy extends EventEmitter {
           this._logger.debug(`Clearing TTL for hash ${hash}`);
           clearTimeout(this._ttlMap.get(hash));
           this._ttlMap.delete(hash);
+
+          /**
+           * @event BasePolicy#ttlCleared
+           * @type {string}
+           * @property {string} hash - The hash of the cleared cache.
+           */
+          this.emit('ttlCleared', hash);
         }
 
         span.end();
@@ -160,7 +170,6 @@ export abstract class BasePolicy extends EventEmitter {
 
   /**
    * Registers TTL for the given hash. If a TTL for the given hash already exists, it is reset.
-   * @emits BasePolicy#ttlExpired
    * @param {string} hash - Hash to register the TTL for.
    * @param {number} ttl - TTL time.
    */
