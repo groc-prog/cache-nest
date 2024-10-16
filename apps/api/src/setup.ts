@@ -313,9 +313,9 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
           break;
       }
     }
-  } catch (error) {
+  } catch (err) {
     logger.error(
-      `Failed to read API configuration file at ${path.join(API_CONFIG_FILEPATH, API_CONFIG_FILENAME)}: ${error}`,
+      `Failed to read API configuration file at ${path.join(API_CONFIG_FILEPATH, API_CONFIG_FILENAME)}: ${err}`,
     );
     process.exit(0);
   }
