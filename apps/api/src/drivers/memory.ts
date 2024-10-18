@@ -477,17 +477,18 @@ export class MemoryDriver extends NativeBaseDriver {
       },
       async (span) => {
         this._logger.info('Initializing snapshots');
-
         const snapshotFilePath = path.resolve(this._config.recovery.snapshotFilePath);
-        const exists = await fse.exists(snapshotFilePath);
 
-        if (!exists) {
-          try {
+        try {
+          const exists = await fse.exists(snapshotFilePath);
+
+          if (!exists) {
             this._logger.verbose('Ensuring snapshot file exists');
             await fse.ensureFile(snapshotFilePath);
-          } catch (err) {
-            this._logger.error(`Failed to create snapshot file at ${snapshotFilePath}: `, err);
           }
+        } catch (err) {
+          this._logger.error(`Failed to create snapshot file at ${snapshotFilePath}: `, err);
+          return;
         }
 
         await tracer.startActiveSpan(
@@ -507,9 +508,9 @@ export class MemoryDriver extends NativeBaseDriver {
               [Policy.RR]: 0,
               [Policy.FIFO]: 0,
             };
+            this._logger.verbose(`Loading snapshot file at ${snapshotFilePath}`);
 
             try {
-              this._logger.verbose(`Loading snapshot file at ${snapshotFilePath}`);
               let snapshotFile = await fse.readFile(snapshotFilePath);
               if (snapshotFile.length === 0) {
                 this._logger.verbose('No persisted caches, skipping');
@@ -569,20 +570,20 @@ export class MemoryDriver extends NativeBaseDriver {
 
                 this._policies[policy as Policy].applySnapshot(validHashes, snapshot.policies[policy as Policy]);
               }
+
+              recoverSnapshotsSpan.setAttributes({
+                'recovered.total': recovered.total,
+                'recovered.lru': recovered[Policy.LRU],
+                'recovered.lfu': recovered[Policy.LFU],
+                'recovered.mru': recovered[Policy.MRU],
+                'recovered.mfu': recovered[Policy.MFU],
+                'recovered.rr': recovered[Policy.RR],
+                'recovered.fifo': recovered[Policy.FIFO],
+              });
+              recoverSnapshotsSpan.end();
             } catch (err) {
               this._logger.error(`Failed to apply snapshot file ${snapshotFilePath}: `, err);
             }
-
-            recoverSnapshotsSpan.setAttributes({
-              'recovered.total': recovered.total,
-              'recovered.lru': recovered[Policy.LRU],
-              'recovered.lfu': recovered[Policy.LFU],
-              'recovered.mru': recovered[Policy.MRU],
-              'recovered.mfu': recovered[Policy.MFU],
-              'recovered.rr': recovered[Policy.RR],
-              'recovered.fifo': recovered[Policy.FIFO],
-            });
-            recoverSnapshotsSpan.end();
           },
         );
 

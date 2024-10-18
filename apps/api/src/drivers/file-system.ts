@@ -97,52 +97,60 @@ export class FileSystemDriver extends NativeBaseDriver {
                   [Policy.FIFO]: 0,
                 };
 
-                const ttlFilePath = this._ttlFilePath(policy as Policy);
-                const ttlRelease = await lockfile.lock(ttlFilePath);
-                const ttlMap = decode(await fse.readFile(ttlFilePath), { extensionCodec }) as Map<string, number>;
+                try {
+                  const ttlFilePath = this._ttlFilePath(policy as Policy);
+                  const ttlRelease = await lockfile.lock(ttlFilePath);
+                  const ttlMap = decode(await fse.readFile(ttlFilePath), { extensionCodec }) as Map<string, number>;
 
-                for (const [cacheHash, timestamp] of ttlMap.entries()) {
-                  if (Date.now() > timestamp) {
-                    this._logger.verbose(`TTL for cache ${cacheHash} expired, not recovering cache`);
-                    ttlMap.delete(cacheHash);
+                  for (const [cacheHash, timestamp] of ttlMap.entries()) {
+                    if (Date.now() > timestamp) {
+                      this._logger.verbose(`TTL for cache ${cacheHash} expired, not recovering cache`);
+                      ttlMap.delete(cacheHash);
 
-                    const cachePath = this._getCachePath(policy as Policy, cacheHash);
-                    const cacheRelease = await lockfile.lock(cachePath);
-                    await cacheRelease();
-                    await fse.remove(cachePath);
-                    continue;
+                      const cachePath = this._getCachePath(policy as Policy, cacheHash);
+                      const cacheRelease = await lockfile.lock(cachePath);
+                      await cacheRelease();
+                      await fse.remove(cachePath);
+                      continue;
+                    }
+
+                    this._policies[policy as Policy].registerTTL(cacheHash, timestamp - Date.now());
+                    recovered[policy as Policy] += 1;
                   }
 
-                  this._policies[policy as Policy].registerTTL(cacheHash, timestamp - Date.now());
-                  recovered[policy as Policy] += 1;
+                  await fse.writeFile(ttlFilePath, encode(ttlMap, { extensionCodec }));
+                  await ttlRelease();
+
+                  ttlRecoverySpan.setAttributes({
+                    'recovered.total': recovered.total,
+                    'recovered.lru': recovered[Policy.LRU],
+                    'recovered.lfu': recovered[Policy.LFU],
+                    'recovered.mru': recovered[Policy.MRU],
+                    'recovered.mfu': recovered[Policy.MFU],
+                    'recovered.rr': recovered[Policy.RR],
+                    'recovered.fifo': recovered[Policy.FIFO],
+                  });
+                  ttlRecoverySpan.end();
+                } catch (err) {
+                  this._logger.error('Failed to recover TTL timers', err);
                 }
-
-                await fse.writeFile(ttlFilePath, encode(ttlMap, { extensionCodec }));
-                await ttlRelease();
-
-                ttlRecoverySpan.setAttributes({
-                  'recovered.total': recovered.total,
-                  'recovered.lru': recovered[Policy.LRU],
-                  'recovered.lfu': recovered[Policy.LFU],
-                  'recovered.mru': recovered[Policy.MRU],
-                  'recovered.mfu': recovered[Policy.MFU],
-                  'recovered.rr': recovered[Policy.RR],
-                  'recovered.fifo': recovered[Policy.FIFO],
-                });
-                ttlRecoverySpan.end();
               },
             );
 
             this._logger.debug(`Setting up listeners for ${policy} policy`);
             this._policies[policy as Policy].on('ttlExpired', async (hash) => {
-              const cachePath = this._getCachePath(policy as Policy, hash);
+              try {
+                const cachePath = this._getCachePath(policy as Policy, hash);
 
-              // To assure that no other operation is currently using the file, we try to acquire a lock first
-              const release = await lockfile.lock(cachePath);
-              await release();
-              await fse.remove(cachePath);
+                // To assure that no other operation is currently using the file, we try to acquire a lock first
+                const release = await lockfile.lock(cachePath);
+                await fse.remove(cachePath);
+                await release();
 
-              this._removeTTLHash(hash, policy as Policy);
+                this._removeTTLHash(hash, policy as Policy);
+              } catch (err) {
+                this._logger.error(`Failed to remove cache file for ${hash}`, err);
+              }
             });
             this._policies[policy as Policy].on('ttlExpired', (hash) => {
               this._removeTTLHash(hash, policy as Policy);
@@ -150,7 +158,6 @@ export class FileSystemDriver extends NativeBaseDriver {
           }
 
           this._isInitialized = true;
-
           this._logger.info(`${capitalize(this.driver)} driver initialized`);
         } catch (err) {
           this._logger.error(`Failed to initialize ${capitalize(this.driver)} driver`, err);
@@ -333,8 +340,8 @@ export class FileSystemDriver extends NativeBaseDriver {
 
                 const cachePath = this._getCachePath(policy, cacheHash);
                 const release = await lockfile.lock(cachePath);
-                await release();
                 await fse.remove(cachePath);
+                await release();
               }
               invalidationIdentifiers.delete(hash);
 
@@ -461,8 +468,8 @@ export class FileSystemDriver extends NativeBaseDriver {
 
               const release = await lockfile.lock(cachePath);
               const decodedCache = decode(await fse.readFile(cachePath), { extensionCodec }) as Cache;
-              await release();
               await fse.remove(cachePath);
+              await release();
 
               const invalidationIdentifierHashes = decodedCache.options.invalidatedBy.map((identifier) =>
                 this._policies[policy].generateHash(identifier, false),
@@ -533,8 +540,8 @@ export class FileSystemDriver extends NativeBaseDriver {
 
                 const release = await lockfile.lock(cachePath);
                 const decodedCache = decode(await fse.readFile(cachePath), { extensionCodec }) as Cache;
-                await release();
                 await fse.remove(cachePath);
+                await release();
 
                 const invalidationIdentifierHashes = decodedCache.options.invalidatedBy.map((identifier) =>
                   this._policies[remainingPolicy as Policy].generateHash(identifier, false),
