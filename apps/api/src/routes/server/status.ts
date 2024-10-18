@@ -2,7 +2,7 @@ import { t } from 'elysia';
 
 import { Driver, Policy } from '@cache-nest/types';
 
-import type { App } from '@/index';
+import type { App } from '@/server';
 
 const PolicyResourceUsage = t.Object({
   count: t.Number({

@@ -2,8 +2,8 @@ import { t } from 'elysia';
 
 import { Driver, Policy } from '@cache-nest/types';
 
-import type { App } from '@/index';
 import { authenticationPlugin } from '@/plugins/authentication';
+import type { App } from '@/server';
 import { ApiError } from '@/utils/errors';
 import { ErrorResponseType, IdentifierType } from '@/utils/swagger';
 

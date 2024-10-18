@@ -5,6 +5,9 @@ server:
     apiKeys:
       - foo
       - bar
+  clustering:
+    enabled: false
+    clusters: 1
 drivers:
   memory:
     maxSize: 200

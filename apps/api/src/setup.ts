@@ -10,7 +10,12 @@ import { Resource } from '@opentelemetry/resources';
 import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { BatchSpanProcessor, AlwaysOnSampler, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, SEMRESATTRS_HOST_NAME } from '@opentelemetry/semantic-conventions';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  SEMRESATTRS_HOST_NAME,
+  SEMRESATTRS_PROCESS_PID,
+} from '@opentelemetry/semantic-conventions';
 import { env } from 'bun';
 import fse from 'fs-extra';
 import jsYaml from 'js-yaml';
@@ -24,8 +29,12 @@ import {
   type DeepReadonly,
   OpenTelemetryExporter,
   type ApiConfiguration,
+  Driver,
 } from '@cache-nest/types';
 
+import type { BaseDriver } from '@/drivers/base';
+import { FileSystemDriver } from '@/drivers/file-system';
+import { MemoryDriver } from '@/drivers/memory';
 import logger from '@/utils/logger';
 
 const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
@@ -198,7 +207,7 @@ const ApiConfigurationValidator = z.object({
  * @param {ApiConfiguration['tracing']} tracingConfig - The tracing configuration.
  * @param {ApiConfiguration['metrics']} metricsConfig - The metrics configuration.
  */
-async function startSDK(
+export async function startSDK(
   tracingConfig: ApiConfiguration['tracing'],
   metricsConfig: ApiConfiguration['metrics'],
 ): Promise<void> {
@@ -263,6 +272,7 @@ async function startSDK(
       [ATTR_SERVICE_NAME]: API_SERVICE_NAME,
       [ATTR_SERVICE_VERSION]: env.VERSION,
       [SEMRESATTRS_HOST_NAME]: os.hostname(),
+      [SEMRESATTRS_PROCESS_PID]: process.pid,
     }),
     traceExporter: tracingConfig.enabled ? traceExporter : undefined,
     sampler: new AlwaysOnSampler(),
@@ -337,9 +347,15 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
     logger.error(`Invalid API configuration: ${errorMessage}`);
     process.exit(0);
   } else {
-    await startSDK(validated.data.tracing, validated.data.metrics);
-
     logger.info('API setup complete');
     return validated.data as ApiConfiguration;
   }
 }
+
+export const apiConfiguration = await getApiConfiguration();
+export const cacheDrivers: Record<Driver, BaseDriver> = {
+  [Driver.MEMORY]: new MemoryDriver(apiConfiguration.drivers.memory),
+  [Driver.FILE_SYSTEM]: new FileSystemDriver(apiConfiguration.drivers.fileSystem),
+};
+
+for (const driver in cacheDrivers) await cacheDrivers[driver as Driver].init();

@@ -2,7 +2,7 @@ import { t } from 'elysia';
 
 import { OpenTelemetryExporter } from '@cache-nest/types';
 
-import type { App } from '@/index';
+import type { App } from '@/server';
 
 export default (app: App) =>
   app.get(

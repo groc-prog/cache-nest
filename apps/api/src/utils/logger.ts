@@ -21,6 +21,7 @@ export default createLogger({
   format: format.combine(format.timestamp({ format: 'YYYY-MM-DD hh:mm:ss.SSS' }), format.json(), traceFormat()),
   defaultMeta: {
     service: 'cache-nest',
+    pid: process.pid,
   },
   transports: [new transports.Console()],
 });
