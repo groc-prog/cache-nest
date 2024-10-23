@@ -7,11 +7,27 @@ import { Elysia } from 'elysia';
 import { autoload } from 'elysia-autoload';
 import { merge } from 'lodash-es';
 
-import { startSDK, apiConfiguration, cacheDrivers } from '@/setup';
+import { Driver } from '@cache-nest/types';
+
+import { type BaseDriver, FileSystemDriver, MemoryDriver } from '@/drivers';
+import { getApiConfiguration } from '@/setup/configuration-setup';
 import { ApiError } from '@/utils/errors';
 import globalLogger from '@/utils/logger';
 
-await startSDK(apiConfiguration.tracing, apiConfiguration.metrics);
+const apiConfiguration = await getApiConfiguration();
+const cacheDrivers: Record<Driver, BaseDriver> = {
+  [Driver.MEMORY]: new MemoryDriver(apiConfiguration.drivers.memory),
+  [Driver.FILE_SYSTEM]: new FileSystemDriver(apiConfiguration.drivers.fileSystem),
+};
+
+for (const driver in cacheDrivers) {
+  if (apiConfiguration.server.clustering.enabled && driver === Driver.MEMORY) {
+    globalLogger.warning('Memory driver will be disabled when using clustering mode');
+    continue;
+  }
+
+  await cacheDrivers[driver as Driver].init();
+}
 
 globalLogger.debug('Setting up server plugins and routes');
 const elysiaServer = new Elysia()

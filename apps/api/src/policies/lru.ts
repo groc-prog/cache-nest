@@ -1,8 +1,8 @@
 import { Driver, Policy } from '@cache-nest/types';
 
-import { BasePolicy } from '@/policies/base';
+import { BasePolicy } from '@/policies';
+import { tracer } from '@/setup/opentelemetry-setup';
 import { LinkedList } from '@/utils/linked-list';
-import { tracer } from '@/utils/opentelemetry';
 
 interface LRUSnapshot {
   keyOrder: string[];

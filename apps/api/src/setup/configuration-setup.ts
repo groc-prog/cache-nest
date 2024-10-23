@@ -1,46 +1,20 @@
-import { OTLPMetricExporter as OTLPMetricExporterGrpc } from '@opentelemetry/exporter-metrics-otlp-grpc';
-import { OTLPMetricExporter as OTLPMetricExporterHttp } from '@opentelemetry/exporter-metrics-otlp-http';
-import { OTLPMetricExporter as OTLPMetricExporterProto } from '@opentelemetry/exporter-metrics-otlp-proto';
-import { OTLPTraceExporter as OTLPTraceExporterGrpc } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { OTLPTraceExporter as OTLPTraceExporterHttp } from '@opentelemetry/exporter-trace-otlp-http';
-import { OTLPTraceExporter as OTLPTraceExporterProto } from '@opentelemetry/exporter-trace-otlp-proto';
-import { FsInstrumentation } from '@opentelemetry/instrumentation-fs';
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import { Resource } from '@opentelemetry/resources';
-import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelemetry/sdk-metrics';
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { BatchSpanProcessor, AlwaysOnSampler, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-  SEMRESATTRS_HOST_NAME,
-  SEMRESATTRS_PROCESS_PID,
-} from '@opentelemetry/semantic-conventions';
 import { env } from 'bun';
 import fse from 'fs-extra';
 import jsYaml from 'js-yaml';
 import { merge } from 'lodash-es';
 import os from 'os';
 import path from 'path';
+import { cwd } from 'process';
 import { z } from 'zod';
 
-import {
-  type UnparsedApiConfiguration,
-  type DeepReadonly,
-  OpenTelemetryExporter,
-  type ApiConfiguration,
-  Driver,
-} from '@cache-nest/types';
+import { type UnparsedApiConfiguration, type ApiConfiguration, OpenTelemetryExporter } from '@cache-nest/types';
 
-import type { BaseDriver } from '@/drivers/base';
-import { FileSystemDriver } from '@/drivers/file-system';
-import { MemoryDriver } from '@/drivers/memory';
 import logger from '@/utils/logger';
 
-const API_CONFIG_FILENAME: Readonly<string> = 'cache-nest-config';
-const API_CONFIG_FILEPATH: Readonly<string> = env.NODE_ENV !== 'production' ? '.' : '/etc';
-export const API_SERVICE_NAME: Readonly<string> = 'cache-nest';
-export const API_CONFIG_DEFAULTS: DeepReadonly<UnparsedApiConfiguration> = {
+const API_CONFIGURATION_CACHE_PATH = '.cache-nest-configuration-cache.json';
+const API_CONFIG_FILENAME = 'cache-nest-config';
+const API_CONFIG_FILE_PATH = env.NODE_ENV !== 'production' ? '.' : '/etc';
+const API_CONFIG_DEFAULTS: UnparsedApiConfiguration = {
   server: {
     port: 3000,
     host: '0.0.0.0',
@@ -202,108 +176,37 @@ const ApiConfigurationValidator = z.object({
 });
 
 /**
- * Starts the NodeJS Opentelemetry SDK with the defined configuration.
- * @async
- * @param {ApiConfiguration['tracing']} tracingConfig - The tracing configuration.
- * @param {ApiConfiguration['metrics']} metricsConfig - The metrics configuration.
- */
-export async function startSDK(
-  tracingConfig: ApiConfiguration['tracing'],
-  metricsConfig: ApiConfiguration['metrics'],
-): Promise<void> {
-  if (!tracingConfig.enabled && !metricsConfig.enabled) {
-    logger.debug('Tracing and metrics disabled, skipping OpenTelemetry initialization');
-    return;
-  }
-
-  logger.info('Setting up OpenTelemetry SKD');
-  let traceExporter: OTLPTraceExporterGrpc | OTLPTraceExporterHttp | OTLPTraceExporterProto | ConsoleSpanExporter;
-  let metricsExporter:
-    | OTLPMetricExporterGrpc
-    | OTLPMetricExporterHttp
-    | OTLPMetricExporterProto
-    | ConsoleMetricExporter;
-
-  logger.debug('Deciding on exporters');
-  switch (tracingConfig.exporter) {
-    case OpenTelemetryExporter.HTTP:
-      traceExporter = new OTLPTraceExporterHttp({
-        url: tracingConfig.url,
-      });
-      break;
-    case OpenTelemetryExporter.PROTOBUFF:
-      traceExporter = new OTLPTraceExporterProto({
-        url: tracingConfig.url,
-      });
-      break;
-    case OpenTelemetryExporter.GRPC:
-      traceExporter = new OTLPTraceExporterGrpc({
-        url: tracingConfig.url,
-      });
-      break;
-    default:
-      traceExporter = new ConsoleSpanExporter();
-      break;
-  }
-
-  switch (metricsConfig.exporter) {
-    case OpenTelemetryExporter.HTTP:
-      metricsExporter = new OTLPMetricExporterHttp({
-        url: metricsConfig.url,
-      });
-      break;
-    case OpenTelemetryExporter.PROTOBUFF:
-      metricsExporter = new OTLPMetricExporterProto({
-        url: metricsConfig.url,
-      });
-      break;
-    case OpenTelemetryExporter.GRPC:
-      metricsExporter = new OTLPMetricExporterGrpc({
-        url: metricsConfig.url,
-      });
-      break;
-    default:
-      metricsExporter = new ConsoleMetricExporter();
-      break;
-  }
-
-  const sdk = new NodeSDK({
-    resource: new Resource({
-      [ATTR_SERVICE_NAME]: API_SERVICE_NAME,
-      [ATTR_SERVICE_VERSION]: env.VERSION,
-      [SEMRESATTRS_HOST_NAME]: os.hostname(),
-      [SEMRESATTRS_PROCESS_PID]: process.pid,
-    }),
-    traceExporter: tracingConfig.enabled ? traceExporter : undefined,
-    sampler: new AlwaysOnSampler(),
-    spanProcessors: tracingConfig.enabled ? [new BatchSpanProcessor(traceExporter)] : undefined,
-    metricReader: metricsConfig.enabled
-      ? new PeriodicExportingMetricReader({
-          exporter: metricsExporter,
-          exportIntervalMillis: metricsConfig.interval,
-        })
-      : undefined,
-    instrumentations: [new HttpInstrumentation(), new FsInstrumentation()],
-  });
-
-  logger.info('Opentelemetry SDK ready');
-  sdk.start();
-}
-
-/**
  * Validates and parses the API configuration, if provided. If no config file is found, fallback to default values
  * is used. Once the API configuration is validated, the Opentelemetry SDK is started with the parsed configuration.
  * If the validation fails, the process will exit with code 0.
  * @async
+ * @param {boolean} [noCache=false] - Whether to use a cached version of the configuration if found.
  * @returns {Promise<ApiConfiguration>} The validated and parsed API configuration.
  */
-export async function getApiConfiguration(): Promise<ApiConfiguration> {
+export async function getApiConfiguration(noCache: boolean = false): Promise<ApiConfiguration> {
   logger.info(`Using Cache-Nest ${env.VERSION}`);
+  const cacheFilePath = path.join(cwd(), API_CONFIGURATION_CACHE_PATH);
+
+  if (noCache) {
+    try {
+      await fse.remove(cacheFilePath);
+    } catch (err) {
+      logger.error('Failed to remove cached configuration file', err);
+    }
+  } else {
+    try {
+      logger.verbose('Checking for configuration cache');
+      return (await fse.readJSON(cacheFilePath)) as ApiConfiguration;
+    } catch (err) {
+      logger.verbose('No cached configuration file found', err);
+    }
+  }
+
   let apiConfig = merge({}, API_CONFIG_DEFAULTS) as UnparsedApiConfiguration;
 
   try {
-    logger.debug(`Searching for configuration file ${API_CONFIG_FILENAME} as path ${API_CONFIG_FILEPATH}`);
-    const files = await fse.readdir(path.resolve(API_CONFIG_FILEPATH));
+    logger.debug(`Searching for configuration file ${API_CONFIG_FILENAME} as path ${API_CONFIG_FILE_PATH}`);
+    const files = await fse.readdir(path.resolve(API_CONFIG_FILE_PATH));
     const configFile = files.find((file) => path.parse(file).name === API_CONFIG_FILENAME);
 
     // If a config file is provided, we merge the options and validate the configuration as a whole.
@@ -332,7 +235,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
     }
   } catch (err) {
     logger.error(
-      `Failed to read API configuration file at ${path.join(API_CONFIG_FILEPATH, API_CONFIG_FILENAME)}: ${err}`,
+      `Failed to read API configuration file at ${path.join(API_CONFIG_FILE_PATH, API_CONFIG_FILENAME)}: ${err}`,
     );
     process.exit(0);
   }
@@ -347,15 +250,13 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
     logger.error(`Invalid API configuration: ${errorMessage}`);
     process.exit(0);
   } else {
-    logger.info('API setup complete');
+    try {
+      logger.verbose('Caching configuration file');
+      await fse.writeJSON(cacheFilePath, validated.data);
+    } catch (err) {
+      logger.info('Failed to cache configuration file', err);
+    }
+    logger.info('Setup complete');
     return validated.data as ApiConfiguration;
   }
 }
-
-export const apiConfiguration = await getApiConfiguration();
-export const cacheDrivers: Record<Driver, BaseDriver> = {
-  [Driver.MEMORY]: new MemoryDriver(apiConfiguration.drivers.memory),
-  [Driver.FILE_SYSTEM]: new FileSystemDriver(apiConfiguration.drivers.fileSystem),
-};
-
-for (const driver in cacheDrivers) await cacheDrivers[driver as Driver].init();

@@ -12,7 +12,7 @@ export enum Policy {
 
 export enum Driver {
   MEMORY = 'memory',
-  FILE_SYSTEM = 'file_system',
+  FILE_SYSTEM = 'fileSystem',
 }
 
 /**

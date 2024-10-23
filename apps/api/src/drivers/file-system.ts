@@ -15,17 +15,8 @@ import {
   type ApiConfiguration,
 } from '@cache-nest/types';
 
-import { NativeBaseDriver } from '@/drivers/base';
-import type { BasePolicy } from '@/policies/base';
-import { FIFOPolicy } from '@/policies/fifo';
-import { LFUPolicy } from '@/policies/lfu';
-import { LRUPolicy } from '@/policies/lru';
-import { MFUPolicy } from '@/policies/mfu';
-import { MRUPolicy } from '@/policies/mru';
-import { RRPolicy } from '@/policies/rr';
-import type { CreateCache } from '@/types/cache';
-import { ApiError } from '@/utils/errors';
-import { extensionCodec } from '@/utils/msgpack';
+import { NativeBaseDriver } from '@/drivers';
+import { type BasePolicy, FIFOPolicy, LFUPolicy, LRUPolicy, MFUPolicy, MRUPolicy, RRPolicy } from '@/policies';
 import {
   cacheHitsCounter,
   cacheLookupsCounter,
@@ -35,7 +26,10 @@ import {
   sizeLimitEvictionsCounter,
   totalEvictionsCounter,
   tracer,
-} from '@/utils/opentelemetry';
+} from '@/setup/opentelemetry-setup';
+import type { CreateCache } from '@/types/cache';
+import { ApiError } from '@/utils/errors';
+import { extensionCodec } from '@/utils/msgpack';
 
 export class FileSystemDriver extends NativeBaseDriver {
   private _policies: Record<Policy, BasePolicy> = {

@@ -7,7 +7,7 @@ server:
       - bar
   clustering:
     enabled: false
-    clusters: 1
+    clusters: 3
 drivers:
   memory:
     maxSize: 200
@@ -21,5 +21,5 @@ tracing:
   url: http://localhost:4317/v1/traces
 metrics:
   enabled: true
-  exporter: grpc
-  url: http://localhost:4317/v1/metrics
+  exporter: proto
+  url: http://localhost:4318/v1/metrics

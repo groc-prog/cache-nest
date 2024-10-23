@@ -40,3 +40,4 @@ yarn-error.log*
 
 # Cache nest
 .cache-nest
+.cache-nest-configuration-cache.json

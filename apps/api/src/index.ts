@@ -1,9 +1,11 @@
 import type { Subprocess } from 'bun';
 import path from 'path';
 
-import { apiConfiguration } from '@/setup';
+import { getApiConfiguration } from '@/setup/configuration-setup';
 
-const clusterCount = apiConfiguration.server.clustering.enabled ? apiConfiguration.server.clustering.clusters : 1;
+const { server } = await getApiConfiguration(true);
+
+const clusterCount = server.clustering.enabled ? server.clustering.clusters : 1;
 const clusters: Subprocess[] = new Array(clusterCount);
 
 for (let i = 0; i < clusterCount; i++) {

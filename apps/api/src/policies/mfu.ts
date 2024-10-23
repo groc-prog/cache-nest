@@ -2,8 +2,8 @@ import { max } from 'lodash-es';
 
 import { Driver, Policy } from '@cache-nest/types';
 
-import { BasePolicy } from '@/policies/base';
-import { tracer } from '@/utils/opentelemetry';
+import { BasePolicy } from '@/policies';
+import { tracer } from '@/setup/opentelemetry-setup';
 
 interface MFUSnapshot {
   keyOrderMap: Map<number, string[]>;

@@ -1,6 +1,6 @@
 import type { App } from '@/server';
+import { tracer } from '@/setup/opentelemetry-setup';
 import { ApiError } from '@/utils/errors';
-import { tracer } from '@/utils/opentelemetry';
 
 /**
  * Plugin for API token authentication. THe token is expected to be included in the
