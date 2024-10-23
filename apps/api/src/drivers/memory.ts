@@ -29,6 +29,7 @@ import {
   cacheHitsCounter,
   cacheLookupsCounter,
   cacheMissesCounter,
+  deletedCachesCounter,
   invalidationEvictionsCounter,
   sizeLimitEvictionsCounter,
   totalEvictionsCounter,
@@ -129,11 +130,11 @@ export class MemoryDriver extends NativeBaseDriver {
         cacheLookupsCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
         span.setAttribute('cache.hash', hash);
 
-        this._logger.info(`Getting cache for ${hash}`);
+        this._logger.info(`Getting cache ${hash}`);
         const cache = this._caches[policy].get(hash);
 
         if (cache === undefined) {
-          this._logger.info(`No cache for ${hash} found in ${policy} cache`);
+          this._logger.info(`No cache ${hash} found in ${policy} cache`);
           cacheMissesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
           span.end();
           return null;
@@ -214,8 +215,51 @@ export class MemoryDriver extends NativeBaseDriver {
     );
   }
 
+  async delete(identifier: Identifier, policy: Policy): Promise<void> {
+    return tracer.startActiveSpan(
+      'DeleteCache',
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': policy,
+        },
+      },
+      async (span) => {
+        const hash = this._policies[policy].generateHash(identifier);
+        span.setAttribute('cache.hash', hash);
+
+        const cache = this._caches[policy].get(hash);
+
+        if (cache === undefined) {
+          this._logger.info(`No cache ${hash} found in ${policy} cache`);
+          span.end();
+          return;
+        }
+
+        deletedCachesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
+        this._logger.info(`Deleting cache ${hash}`);
+        await this._mutexes[policy].runExclusive(() => {
+          this._policies[policy].stopTracking(hash);
+          this._caches[policy].delete(hash);
+
+          if (cache.options.invalidatedBy.length > 0) {
+            this._logger.verbose('Cleaning up invalidation identifiers');
+
+            cache.options.invalidatedBy
+              .map((invalidationIdentifier) => this._policies[policy].generateHash(invalidationIdentifier, false))
+              .forEach((invalidationIdentifier) => {
+                this._invalidations[policy].get(invalidationIdentifier)?.delete(hash);
+              });
+          }
+        });
+
+        span.end();
+      },
+    );
+  }
+
   async invalidate(identifiers: Identifier[], policy: Policy): Promise<void> {
-    tracer.startActiveSpan(
+    return tracer.startActiveSpan(
       'InvalidateCaches',
       {
         attributes: {

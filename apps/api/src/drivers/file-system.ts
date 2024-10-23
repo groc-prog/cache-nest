@@ -30,6 +30,7 @@ import {
   cacheHitsCounter,
   cacheLookupsCounter,
   cacheMissesCounter,
+  deletedCachesCounter,
   invalidationEvictionsCounter,
   sizeLimitEvictionsCounter,
   totalEvictionsCounter,
@@ -189,9 +190,9 @@ export class FileSystemDriver extends NativeBaseDriver {
         cacheLookupsCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
         span.setAttribute('cache.hash', hash);
 
-        this._logger.info(`Getting cache for ${hash}`);
+        this._logger.info(`Getting cache ${hash}`);
         if (!(await fse.exists(cachePath))) {
-          this._logger.info(`No cache for ${hash} found in ${policy} cache`);
+          this._logger.info(`No cache ${hash} found in ${policy} cache`);
           cacheMissesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
           span.end();
           return null;
@@ -316,8 +317,79 @@ export class FileSystemDriver extends NativeBaseDriver {
     );
   }
 
+  async delete(identifier: Identifier, policy: Policy): Promise<void> {
+    return tracer.startActiveSpan(
+      'DeleteCache',
+      {
+        attributes: {
+          'cache.driver': this.driver,
+          'cache.policy': policy,
+        },
+      },
+      async (span) => {
+        const hash = this._policies[policy].generateHash(identifier);
+        span.setAttribute('cache.hash', hash);
+
+        const cachePath = this._getCachePath(policy, hash);
+        if (!(await fse.exists(cachePath))) {
+          this._logger.info(`No cache ${hash} found in ${policy} cache`);
+          cacheMissesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
+          span.end();
+          return;
+        }
+
+        deletedCachesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
+        this._logger.info(`Deleting cache ${hash}`);
+        const release = await lockfile.lock(cachePath);
+
+        const encodedCache = await fse.readFile(cachePath);
+        if (encodedCache.length === 0)
+          throw new ApiError({
+            message: 'Cache not found',
+            detail: `No cache with hash ${hash} exists.`,
+            status: 404,
+          });
+
+        const cache = decode(encodedCache, { extensionCodec }) as Cache;
+        await fse.remove(cachePath);
+        await release();
+
+        await this._mutexes[policy].runExclusive(() => {
+          this._policies[policy].stopTracking(hash);
+        });
+
+        if (cache.options.invalidatedBy.length > 0) {
+          this._logger.verbose('Cleaning up invalidation identifiers');
+          const invalidationIdentifiersPath = this._getInvalidationIdentifierPath(policy);
+
+          const invalidationIdentifiersRelease = await lockfile.lock(invalidationIdentifiersPath);
+          const encodedInvalidationIdentifiers = await fse.readFile(invalidationIdentifiersPath);
+          const invalidationIdentifiers =
+            encodedInvalidationIdentifiers.length === 0
+              ? new Map<string, Set<string>>()
+              : (decode(encodedInvalidationIdentifiers, {
+                  extensionCodec,
+                }) as Map<string, Set<string>>);
+
+          const invalidatedByHashes = cache.options.invalidatedBy.map((invalidationIdentifier) =>
+            this._policies[policy].generateHash(invalidationIdentifier, false),
+          );
+
+          for (const invalidationIdentifier of invalidatedByHashes) {
+            invalidationIdentifiers.get(invalidationIdentifier)?.delete(hash);
+          }
+
+          await fse.writeFile(invalidationIdentifiersPath, encode(invalidationIdentifiers, { extensionCodec }));
+          await invalidationIdentifiersRelease();
+        }
+
+        span.end();
+      },
+    );
+  }
+
   async invalidate(identifiers: Identifier[], policy: Policy): Promise<void> {
-    tracer.startActiveSpan(
+    return tracer.startActiveSpan(
       'InvalidateCaches',
       {
         attributes: {

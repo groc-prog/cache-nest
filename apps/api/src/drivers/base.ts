@@ -49,6 +49,15 @@ export abstract class BaseDriver {
   ): MaybePromise<boolean>;
 
   /**
+   * Deletes a cache by it's identifier. In contrast to te `invalidate` method, this one only affects the
+   * defined cache and no other caches.
+   * @abstract
+   * @param {Identifier} identifier - The cache identifier.
+   * @param {Policy} policy - The eviction policy the entry uses.
+   */
+  abstract delete(identifier: Identifier, policy: Policy): MaybePromise<void>;
+
+  /**
    * Invalidates all entries which have defined the given invalidation identifiers.
    * @abstract
    * @param {Identifier[]} identifiers - The invalidation identifiers.
