@@ -135,9 +135,6 @@ importers:
       '@cache-nest/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
-      '@types/basic-auth':
-        specifier: ^1.1.8
-        version: 1.1.8
       '@types/bun':
         specifier: ^1.1.9
         version: 1.1.9
@@ -1427,9 +1424,6 @@ packages:
 
   '@types/aws-lambda@8.10.122':
     resolution: {integrity: sha512-vBkIh9AY22kVOCEKo5CJlyCgmSWvasC+SWUxL/x/vOwRobMpI/HG1xp/Ae3AqmSiZeLUbOhW0FCD3ZjqqUxmXw==}
-
-  '@types/basic-auth@1.1.8':
-    resolution: {integrity: sha512-dKcUeixGuZn8pBjcUrf1N7x5K6lWuKuwHHitM2IZ4vwZUDWEhhNtwCWiba8jTA9zn0GQQ+fTFkWpKx8pOU/enw==}
 
   '@types/bun@1.1.9':
     resolution: {integrity: sha512-SXJRejXpmAc3qxyN/YS4/JGWEzLf4dDBa5fLtRDipQXHqNccuMU4EUYCooXNTsylG0DmwFQsGgEDHxZF+3DqRw==}
@@ -5280,10 +5274,6 @@ snapshots:
   '@tsconfig/node16@1.0.4': {}
 
   '@types/aws-lambda@8.10.122': {}
-
-  '@types/basic-auth@1.1.8':
-    dependencies:
-      '@types/node': 20.16.1
 
   '@types/bun@1.1.9':
     dependencies:

@@ -1,6 +1,5 @@
-import { encode, decode } from '@msgpack/msgpack';
 import { Mutex } from 'async-mutex';
-import fse from 'fs-extra';
+import { file as bunFile, write as bunWrite } from 'bun';
 import { capitalize, lowerCase, merge } from 'lodash-es';
 import path from 'path';
 
@@ -28,7 +27,7 @@ import {
 } from '@/setup/opentelemetry';
 import type { CreateCache } from '@/types/cache';
 import { ApiError } from '@/utils/errors';
-import { extensionCodec } from '@/utils/msgpack';
+import { encode, decode } from '@/utils/msgpack';
 
 type Snapshot = {
   caches: {
@@ -104,7 +103,6 @@ export class MemoryDriver extends NativeBaseDriver {
         if (this._config.recovery.enabled) await this._initSnapshots();
 
         this._logger.info(`${capitalize(this.driver)} driver initialized`);
-        this._isInitialized = true;
         span.end();
       },
     );
@@ -325,7 +323,7 @@ export class MemoryDriver extends NativeBaseDriver {
           // Calculate the size of the current policy by getting the byte length of the stringified cache
           // This will always take into account that the map in which the caches are stored take up some
           // amount of memory by default, but this amount is so small that i could not care less about it
-          const size = Buffer.byteLength(JSON.stringify([...this._caches[policy as Policy].values()]));
+          const size = Buffer.byteLength(JSON.stringify([...this._caches[policy as Policy].values()])) - 2;
           const relativeSize = (size * 100) / this._config.maxSize;
 
           obj[lowerCase(policy) as Lowercase<Policy>] = {
@@ -348,10 +346,13 @@ export class MemoryDriver extends NativeBaseDriver {
   }
 
   protected _getCurrentCacheSize(): number {
+    // Since a empty map takes up some memory (2 bytes) we have to adjust for this
+    const defaultAdjustment = Object.keys(this._policies).length * 2;
+
     return Object.values(this._caches).reduce((total, cacheMap) => {
       total += Buffer.byteLength(JSON.stringify([...cacheMap.values()]));
       return total;
-    }, 0);
+    }, -defaultAdjustment);
   }
 
   protected async _ensureCacheSizeLimit(policy: Policy, cache: Cache): Promise<void> {
@@ -518,11 +519,12 @@ export class MemoryDriver extends NativeBaseDriver {
         const snapshotFilePath = path.resolve(this._config.recovery.snapshotFilePath);
 
         try {
-          const exists = await fse.exists(snapshotFilePath);
+          const snapshotFile = bunFile(snapshotFilePath);
+          const exists = await snapshotFile.exists();
 
           if (!exists) {
             this._logger.verbose('Ensuring snapshot file exists');
-            await fse.ensureFile(snapshotFilePath);
+            await bunWrite(snapshotFilePath, '');
           }
         } catch (err) {
           this._logger.error(`Failed to create snapshot file at ${snapshotFilePath}: `, err);
@@ -549,8 +551,10 @@ export class MemoryDriver extends NativeBaseDriver {
             this._logger.verbose(`Loading snapshot file at ${snapshotFilePath}`);
 
             try {
-              let snapshotFile = await fse.readFile(snapshotFilePath);
-              if (snapshotFile.length === 0) {
+              const snapshotFile = bunFile(snapshotFilePath);
+              const encodedSnapshot = await snapshotFile.bytes();
+
+              if (encodedSnapshot.length === 0) {
                 this._logger.verbose('No persisted caches, skipping');
                 recoverSnapshotsSpan.setAttributes({
                   'recovered.total': recovered.total,
@@ -565,7 +569,7 @@ export class MemoryDriver extends NativeBaseDriver {
                 return;
               }
 
-              const snapshot = decode(snapshotFile, { extensionCodec }) as Snapshot;
+              const snapshot = decode(encodedSnapshot) as Snapshot;
 
               for (const policy in snapshot.caches) {
                 const validHashes = new Set<string>();
@@ -648,8 +652,8 @@ export class MemoryDriver extends NativeBaseDriver {
                   snapshot.policies![policy as Policy] = this._policies[policy as Policy].getSnapshot();
                 });
 
-                const encoded = encode(snapshot, { extensionCodec });
-                await fse.writeFile(snapshotFilePath, encoded);
+                const encoded = encode(snapshot);
+                await bunWrite(snapshotFilePath, encoded);
                 this._logger.info('Snapshot created');
               } catch (err) {
                 this._logger.error(`Failed to update snapshot file ${snapshotFilePath}: `, err);

@@ -76,16 +76,6 @@ export abstract class BaseDriver {
 }
 
 export abstract class NativeBaseDriver extends BaseDriver {
-  protected _isInitialized: boolean = false;
-
-  /**
-   * Whether the driver was initialized correctly.
-   * @returns {boolean} `true` if the driver initialized without any issues and `false` otherwise.
-   */
-  get isInitialized(): boolean {
-    return this._isInitialized;
-  }
-
   /**
    * Checks if the given cache can be inserted without overstepping the defined maximum cache size. If there
    * is not enough space left over, it attempts to evict caches from the defined policy. If no caches can be

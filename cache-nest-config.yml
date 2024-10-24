@@ -10,11 +10,15 @@ server:
     clusters: 3
 drivers:
   memory:
-    maxSize: 200
+    maxSize: 500
     evictFromOthers: false
     recovery:
       enabled: false
       snapshotInterval: 10
+  fileSystem:
+    maxSize: 500
+    evictFromOthers: false
+    mountPath: ".cache-nest/file-system"
 tracing:
   enabled: true
   exporter: grpc

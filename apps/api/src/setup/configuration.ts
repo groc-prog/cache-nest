@@ -1,17 +1,16 @@
-import { env } from 'bun';
+import { env, file as bunFile } from 'bun';
+import checkDiskSpace from 'check-disk-space';
 import fse from 'fs-extra';
 import jsYaml from 'js-yaml';
 import { merge } from 'lodash-es';
 import os from 'os';
 import path from 'path';
-import { cwd } from 'process';
 import { z } from 'zod';
 
 import { type UnparsedApiConfiguration, type ApiConfiguration, OpenTelemetryExporter } from '@cache-nest/types';
 
 import logger from '@/utils/logger';
 
-const API_CONFIGURATION_CACHE_PATH = '.cache-nest-configuration-cache.json';
 const API_CONFIG_FILENAME = 'cache-nest-config';
 const API_CONFIG_FILE_PATH = env.NODE_ENV !== 'production' ? '.' : '/etc';
 const API_CONFIG_DEFAULTS: UnparsedApiConfiguration = {
@@ -61,62 +60,6 @@ const API_CONFIG_DEFAULTS: UnparsedApiConfiguration = {
   },
 };
 
-const NumberOrPercentageValidator = z.union([
-  z.number().superRefine((value, ctx) => {
-    if (value <= 0)
-      ctx.addIssue({
-        code: z.ZodIssueCode.too_small,
-        minimum: 1,
-        type: 'number',
-        inclusive: true,
-        message: 'maxSize must be greater than 0',
-      });
-    if (value >= os.totalmem())
-      ctx.addIssue({
-        code: z.ZodIssueCode.too_big,
-        maximum: os.totalmem(),
-        type: 'number',
-        inclusive: true,
-        message: 'maxSize must be less than the total memory/storage',
-      });
-  }),
-  z
-    .string()
-    .superRefine((value, ctx) => {
-      const percentage = parseFloat(value.replace('%', ''));
-
-      if (isNaN(percentage))
-        return ctx.addIssue({
-          code: z.ZodIssueCode.invalid_type,
-          expected: 'number',
-          received: 'string',
-          message: 'maxSize must be a number or a percentage string in the format {number}%',
-        });
-
-      if (percentage <= 0)
-        ctx.addIssue({
-          code: z.ZodIssueCode.too_small,
-          minimum: 1,
-          type: 'number',
-          inclusive: true,
-          message: 'maxSize must be greater than 0%',
-        });
-
-      if (percentage >= 100)
-        ctx.addIssue({
-          code: z.ZodIssueCode.too_big,
-          maximum: 100,
-          type: 'number',
-          inclusive: true,
-          message: 'maxSize must be less than 100%',
-        });
-    })
-    .transform((value) => {
-      const percentage = parseFloat(value.replace('%', ''));
-      return Math.floor((percentage / 100) * os.totalmem());
-    }),
-]);
-
 const ApiConfigurationValidator = z.object({
   server: z.object({
     port: z.number(),
@@ -145,7 +88,61 @@ const ApiConfigurationValidator = z.object({
   }),
   drivers: z.object({
     memory: z.object({
-      maxSize: NumberOrPercentageValidator,
+      maxSize: z.union([
+        z.number().superRefine((value, ctx) => {
+          if (value <= 0)
+            ctx.addIssue({
+              code: z.ZodIssueCode.too_small,
+              minimum: 1,
+              type: 'number',
+              inclusive: true,
+              message: 'maxSize must be greater than 0',
+            });
+          if (value >= os.totalmem())
+            ctx.addIssue({
+              code: z.ZodIssueCode.too_big,
+              maximum: os.totalmem(),
+              type: 'number',
+              inclusive: true,
+              message: 'maxSize must be less than the total memory',
+            });
+        }),
+        z
+          .string()
+          .superRefine((value, ctx) => {
+            const percentage = parseFloat(value.replace('%', ''));
+
+            if (isNaN(percentage))
+              return ctx.addIssue({
+                code: z.ZodIssueCode.invalid_type,
+                expected: 'number',
+                received: 'string',
+                message: 'maxSize must be a number or a percentage string in the format {number}%',
+              });
+
+            if (percentage <= 0)
+              ctx.addIssue({
+                code: z.ZodIssueCode.too_small,
+                minimum: 1,
+                type: 'number',
+                inclusive: true,
+                message: 'maxSize must be greater than 0%',
+              });
+
+            if (percentage >= 100)
+              ctx.addIssue({
+                code: z.ZodIssueCode.too_big,
+                maximum: 100,
+                type: 'number',
+                inclusive: true,
+                message: 'maxSize must be less than 100%',
+              });
+          })
+          .transform((value) => {
+            const percentage = parseFloat(value.replace('%', ''));
+            return Math.floor((percentage / 100) * os.totalmem());
+          }),
+      ]),
       evictFromOthers: z.boolean(),
       recovery: z.object({
         enabled: z.boolean(),
@@ -153,11 +150,73 @@ const ApiConfigurationValidator = z.object({
         snapshotInterval: z.number().positive(),
       }),
     }),
-    fileSystem: z.object({
-      maxSize: NumberOrPercentageValidator,
-      mountPath: z.string(),
-      evictFromOthers: z.boolean(),
-    }),
+    fileSystem: z
+      .object({
+        maxSize: z.union([z.number(), z.string()]),
+        mountPath: z.string(),
+        evictFromOthers: z.boolean(),
+      })
+      .superRefine(async (value, ctx) => {
+        const { size } = await checkDiskSpace(path.resolve(value.mountPath));
+
+        if (typeof value.maxSize === 'number') {
+          if (value.maxSize <= 0)
+            ctx.addIssue({
+              code: z.ZodIssueCode.too_small,
+              minimum: 1,
+              type: 'number',
+              inclusive: true,
+              message: 'maxSize must be greater than 0',
+            });
+          if (value.maxSize >= size)
+            ctx.addIssue({
+              code: z.ZodIssueCode.too_big,
+              maximum: size,
+              type: 'number',
+              inclusive: true,
+              message: 'maxSize must be less than the total disk space',
+            });
+        } else {
+          const percentage = parseFloat(value.maxSize.replace('%', ''));
+
+          if (isNaN(percentage))
+            return ctx.addIssue({
+              code: z.ZodIssueCode.invalid_type,
+              expected: 'number',
+              received: 'string',
+              message: 'maxSize must be a number or a percentage string in the format {number}%',
+            });
+
+          if (percentage <= 0)
+            ctx.addIssue({
+              code: z.ZodIssueCode.too_small,
+              minimum: 1,
+              type: 'number',
+              inclusive: true,
+              message: 'maxSize must be greater than 0%',
+            });
+
+          if (percentage >= 100)
+            ctx.addIssue({
+              code: z.ZodIssueCode.too_big,
+              maximum: 100,
+              type: 'number',
+              inclusive: true,
+              message: 'maxSize must be less than 100%',
+            });
+        }
+      })
+      .transform(async (value) => {
+        if (typeof value.maxSize === 'number') return value;
+
+        const { size } = await checkDiskSpace(path.resolve(value.mountPath));
+        const percentage = parseFloat(value.maxSize.replace('%', ''));
+
+        return {
+          ...value,
+          maxSize: Math.floor((percentage / 100) * size),
+        };
+      }),
   }),
   tracing: z.object({
     enabled: z.boolean(),
@@ -180,55 +239,37 @@ const ApiConfigurationValidator = z.object({
  * is used. Once the API configuration is validated, the Opentelemetry SDK is started with the parsed configuration.
  * If the validation fails, the process will exit with code 0.
  * @async
- * @param {boolean} [noCache=false] - Whether to use a cached version of the configuration if found.
  * @returns {Promise<ApiConfiguration>} The validated and parsed API configuration.
  */
-export async function getApiConfiguration(noCache: boolean = false): Promise<ApiConfiguration> {
+export async function getApiConfiguration(): Promise<ApiConfiguration> {
   logger.info(`Using Cache-Nest ${env.VERSION}`);
-  const cacheFilePath = path.join(cwd(), API_CONFIGURATION_CACHE_PATH);
-
-  if (noCache) {
-    try {
-      await fse.remove(cacheFilePath);
-    } catch (err) {
-      logger.error('Failed to remove cached configuration file', err);
-    }
-  } else {
-    try {
-      logger.verbose('Checking for configuration cache');
-      return (await fse.readJSON(cacheFilePath)) as ApiConfiguration;
-    } catch (err) {
-      logger.verbose('No cached configuration file found', err);
-    }
-  }
-
   let apiConfig = merge({}, API_CONFIG_DEFAULTS) as UnparsedApiConfiguration;
 
   try {
     logger.debug(`Searching for configuration file ${API_CONFIG_FILENAME} as path ${API_CONFIG_FILE_PATH}`);
-    const files = await fse.readdir(path.resolve(API_CONFIG_FILE_PATH));
+    const dirPath = path.resolve(API_CONFIG_FILE_PATH);
+    const files = await fse.readdir(dirPath);
     const configFile = files.find((file) => path.parse(file).name === API_CONFIG_FILENAME);
 
     // If a config file is provided, we merge the options and validate the configuration as a whole.
     // Should this fail we just exit the process and call it a day.
     if (configFile) {
-      const configFilePath = path.parse(configFile);
-      logger.verbose(`Found file ${path.format(configFilePath)}`);
+      const configFilePath = path.join(dirPath, configFile);
+      const file = bunFile(configFilePath);
+      logger.verbose(`Found file ${configFilePath}`);
 
-      switch (configFilePath.ext) {
-        case '.yml':
-        case '.yaml ':
+      switch (file.type) {
+        case 'application/x-yaml':
           logger.debug('Reading YAML configuration file');
-          const contents = await fse.readFile(path.format(configFilePath), 'utf-8');
-          apiConfig = merge({}, apiConfig, jsYaml.load(contents));
+          apiConfig = merge({}, apiConfig, jsYaml.load(await file.text()));
           break;
-        case '.json':
+        case 'application/json':
           logger.debug('Reading JSON configuration file');
-          apiConfig = merge({}, apiConfig, await fse.readJSON(path.format(configFilePath)));
+          apiConfig = merge({}, apiConfig, await file.json());
           break;
         default:
           logger.warn(
-            `Found unsupported file extension ${configFilePath.ext}. The supported formats are YML, YAML and JSON.`,
+            `Found unsupported file ${file.type}. The supported types are application/x-yaml or application/json.`,
           );
           break;
       }
@@ -250,12 +291,6 @@ export async function getApiConfiguration(noCache: boolean = false): Promise<Api
     logger.error(`Invalid API configuration: ${errorMessage}`);
     process.exit(0);
   } else {
-    try {
-      logger.verbose('Caching configuration file');
-      await fse.writeJSON(cacheFilePath, validated.data);
-    } catch (err) {
-      logger.info('Failed to cache configuration file', err);
-    }
     logger.info('Setup complete');
     return validated.data as ApiConfiguration;
   }

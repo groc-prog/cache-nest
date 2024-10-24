@@ -1,6 +1,5 @@
-import { encode, decode } from '@msgpack/msgpack';
 import { Mutex } from 'async-mutex';
-import checkDiskSpace from 'check-disk-space';
+import { file as bunFile, write as bunWrite } from 'bun';
 import fse from 'fs-extra';
 import { capitalize, lowerCase, merge } from 'lodash-es';
 import path from 'path';
@@ -29,7 +28,8 @@ import {
 } from '@/setup/opentelemetry';
 import type { CreateCache } from '@/types/cache';
 import { ApiError } from '@/utils/errors';
-import { extensionCodec } from '@/utils/msgpack';
+import { getDirectorySize } from '@/utils/fs';
+import { encode, decode } from '@/utils/msgpack';
 
 export class FileSystemDriver extends NativeBaseDriver {
   private _policies: Record<Policy, BasePolicy> = {
@@ -73,8 +73,8 @@ export class FileSystemDriver extends NativeBaseDriver {
           for (const policy in this._policies) {
             const ttlFilePath = this._ttlFilePath(policy as Policy);
 
-            await fse.createFile(this._getInvalidationIdentifierPath(policy as Policy));
-            await fse.createFile(ttlFilePath);
+            await bunWrite(this._getInvalidationIdentifierPath(policy as Policy), '');
+            await bunWrite(ttlFilePath, '');
 
             await tracer.startActiveSpan(
               'RecoverTTLTimers',
@@ -97,11 +97,12 @@ export class FileSystemDriver extends NativeBaseDriver {
 
                 try {
                   const ttlRelease = await lockfile.lock(ttlFilePath);
-                  const ttlFileContent = await fse.readFile(ttlFilePath);
+                  const ttlFile = bunFile(ttlFilePath);
+                  const ttlFileContent = await ttlFile.bytes();
                   const ttlMap =
                     ttlFileContent.length === 0
                       ? new Map<string, number>()
-                      : (decode(ttlFileContent, { extensionCodec }) as Map<string, number>);
+                      : (decode(ttlFileContent) as Map<string, number>);
 
                   for (const [cacheHash, timestamp] of ttlMap.entries()) {
                     if (Date.now() > timestamp) {
@@ -119,7 +120,7 @@ export class FileSystemDriver extends NativeBaseDriver {
                     recovered[policy as Policy] += 1;
                   }
 
-                  await fse.writeFile(ttlFilePath, encode(ttlMap, { extensionCodec }));
+                  await bunWrite(ttlFilePath, encode(ttlMap));
                   await ttlRelease();
 
                   ttlRecoverySpan.setAttributes({
@@ -158,7 +159,6 @@ export class FileSystemDriver extends NativeBaseDriver {
             });
           }
 
-          this._isInitialized = true;
           this._logger.info(`${capitalize(this.driver)} driver initialized`);
         } catch (err) {
           this._logger.error(`Failed to initialize ${capitalize(this.driver)} driver`, err);
@@ -185,7 +185,8 @@ export class FileSystemDriver extends NativeBaseDriver {
         span.setAttribute('cache.hash', hash);
 
         this._logger.info(`Getting cache ${hash}`);
-        if (!(await fse.exists(cachePath))) {
+        const cacheFile = bunFile(cachePath);
+        if (!(await cacheFile.exists())) {
           this._logger.info(`No cache ${hash} found in ${policy} cache`);
           cacheMissesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
           span.end();
@@ -205,7 +206,7 @@ export class FileSystemDriver extends NativeBaseDriver {
           this._policies[policy].hit(hash);
         });
 
-        const encodedCache = await fse.readFile(cachePath);
+        const encodedCache = await cacheFile.bytes();
         if (encodedCache.length === 0)
           throw new ApiError({
             message: 'Cache not found',
@@ -213,14 +214,14 @@ export class FileSystemDriver extends NativeBaseDriver {
             status: 404,
           });
 
-        const cache = decode(encodedCache, { extensionCodec }) as Cache;
+        const cache = decode(encodedCache) as Cache;
 
         const updatedCache: Cache = merge({}, cache, {
           atime: Date.now(),
           hits: cache.hits + 1,
         });
 
-        await fse.writeFile(cachePath, encode(updatedCache, { extensionCodec }));
+        await bunWrite(cachePath, encode(updatedCache));
         await release();
 
         span.end();
@@ -244,7 +245,8 @@ export class FileSystemDriver extends NativeBaseDriver {
         span.setAttribute('cache.hash', hash);
         this._logger.info(`Settings cache ${hash}`);
 
-        if ((await fse.exists(cachePath)) && !force) {
+        const cacheFile = bunFile(cachePath);
+        if ((await cacheFile.exists()) && !force) {
           this._logger.warn(`Cache ${hash} does already exist and force is set to false, skipping`);
           span.end();
           return false;
@@ -261,7 +263,7 @@ export class FileSystemDriver extends NativeBaseDriver {
         });
 
         const cacheFileRelease = await lockfile.lock(cachePath);
-        await fse.writeFile(cachePath, encode(cache, { extensionCodec }));
+        await bunWrite(cachePath, encode(cache));
         await cacheFileRelease();
 
         if (cache.options.invalidatedBy.length > 0) {
@@ -269,15 +271,14 @@ export class FileSystemDriver extends NativeBaseDriver {
             `Registering ${cache.options.invalidatedBy.length} invalidation identifiers for ${hash}`,
           );
           const invalidationIdentifiersPath = this._getInvalidationIdentifierPath(policy);
+          const invalidationIdentifiersFile = bunFile(invalidationIdentifiersPath);
 
           const invalidationIdentifiersRelease = await lockfile.lock(invalidationIdentifiersPath);
-          const encodedInvalidationIdentifiers = await fse.readFile(invalidationIdentifiersPath);
+          const encodedInvalidationIdentifiers = await invalidationIdentifiersFile.bytes();
           const invalidationIdentifiers =
             encodedInvalidationIdentifiers.length === 0
               ? new Map<string, Set<string>>()
-              : (decode(encodedInvalidationIdentifiers, {
-                  extensionCodec,
-                }) as Map<string, Set<string>>);
+              : (decode(encodedInvalidationIdentifiers) as Map<string, Set<string>>);
 
           cache.options.invalidatedBy
             .map((invalidationIdentifier) => this._policies[policy].generateHash(invalidationIdentifier, false))
@@ -287,21 +288,20 @@ export class FileSystemDriver extends NativeBaseDriver {
               invalidationIdentifiers.get(invalidationHash)?.add(hash);
             });
 
-          await fse.writeFile(invalidationIdentifiersPath, encode(invalidationIdentifiers, { extensionCodec }));
+          await bunWrite(invalidationIdentifiersPath, encode(invalidationIdentifiers));
           await invalidationIdentifiersRelease();
         }
 
         if (cache.options.ttl > 0) {
           const ttlFilePath = this._ttlFilePath(policy as Policy);
+          const ttlFile = bunFile(ttlFilePath);
           const ttlRelease = await lockfile.lock(ttlFilePath);
-          const encodedTtlMap = await fse.readFile(ttlFilePath);
+          const encodedTtlMap = await ttlFile.bytes();
           const ttlMap =
-            encodedTtlMap.length === 0
-              ? new Map<string, number>()
-              : (decode(encodedTtlMap, { extensionCodec }) as Map<string, number>);
+            encodedTtlMap.length === 0 ? new Map<string, number>() : (decode(encodedTtlMap) as Map<string, number>);
 
           ttlMap.set(hash, cache.ctime + cache.options.ttl);
-          await fse.writeFile(ttlFilePath, encode(ttlMap, { extensionCodec }));
+          await bunWrite(ttlFilePath, encode(ttlMap));
           await ttlRelease();
         }
 
@@ -325,7 +325,8 @@ export class FileSystemDriver extends NativeBaseDriver {
         span.setAttribute('cache.hash', hash);
 
         const cachePath = this._getCachePath(policy, hash);
-        if (!(await fse.exists(cachePath))) {
+        const cacheFile = bunFile(cachePath);
+        if (!(await cacheFile.exists())) {
           this._logger.info(`No cache ${hash} found in ${policy} cache`);
           cacheMissesCounter.add(1, { 'cache.driver': this.driver, 'cache.policy': policy, 'cache.hash': hash });
           span.end();
@@ -336,7 +337,7 @@ export class FileSystemDriver extends NativeBaseDriver {
         this._logger.info(`Deleting cache ${hash}`);
         const release = await lockfile.lock(cachePath);
 
-        const encodedCache = await fse.readFile(cachePath);
+        const encodedCache = await cacheFile.bytes();
         if (encodedCache.length === 0)
           throw new ApiError({
             message: 'Cache not found',
@@ -344,7 +345,7 @@ export class FileSystemDriver extends NativeBaseDriver {
             status: 404,
           });
 
-        const cache = decode(encodedCache, { extensionCodec }) as Cache;
+        const cache = decode(encodedCache) as Cache;
         await fse.remove(cachePath);
         await release();
 
@@ -355,15 +356,14 @@ export class FileSystemDriver extends NativeBaseDriver {
         if (cache.options.invalidatedBy.length > 0) {
           this._logger.verbose('Cleaning up invalidation identifiers');
           const invalidationIdentifiersPath = this._getInvalidationIdentifierPath(policy);
+          const invalidationIdentifiersFile = bunFile(invalidationIdentifiersPath);
 
           const invalidationIdentifiersRelease = await lockfile.lock(invalidationIdentifiersPath);
-          const encodedInvalidationIdentifiers = await fse.readFile(invalidationIdentifiersPath);
+          const encodedInvalidationIdentifiers = await invalidationIdentifiersFile.bytes();
           const invalidationIdentifiers =
             encodedInvalidationIdentifiers.length === 0
               ? new Map<string, Set<string>>()
-              : (decode(encodedInvalidationIdentifiers, {
-                  extensionCodec,
-                }) as Map<string, Set<string>>);
+              : (decode(encodedInvalidationIdentifiers) as Map<string, Set<string>>);
 
           const invalidatedByHashes = cache.options.invalidatedBy.map((invalidationIdentifier) =>
             this._policies[policy].generateHash(invalidationIdentifier, false),
@@ -373,7 +373,7 @@ export class FileSystemDriver extends NativeBaseDriver {
             invalidationIdentifiers.get(invalidationIdentifier)?.delete(hash);
           }
 
-          await fse.writeFile(invalidationIdentifiersPath, encode(invalidationIdentifiers, { extensionCodec }));
+          await bunWrite(invalidationIdentifiersPath, encode(invalidationIdentifiers));
           await invalidationIdentifiersRelease();
         }
 
@@ -394,15 +394,14 @@ export class FileSystemDriver extends NativeBaseDriver {
       async (span) => {
         this._logger.info(`Evicting all caches affected by ${identifiers.length} invalidation identifiers`);
         const invalidationIdentifiersPath = this._getInvalidationIdentifierPath(policy);
+        const invalidationIdentifiersFile = bunFile(invalidationIdentifiersPath);
 
         const invalidationIdentifiersRelease = await lockfile.lock(invalidationIdentifiersPath);
-        const encodedInvalidationIdentifiers = await fse.readFile(invalidationIdentifiersPath);
+        const encodedInvalidationIdentifiers = await invalidationIdentifiersFile.bytes();
         const invalidationIdentifiers =
           encodedInvalidationIdentifiers.length === 0
             ? new Map<string, Set<string>>()
-            : (decode(encodedInvalidationIdentifiers, {
-                extensionCodec,
-              }) as Map<string, Set<string>>);
+            : (decode(encodedInvalidationIdentifiers) as Map<string, Set<string>>);
 
         for (const identifier of identifiers) {
           await tracer.startActiveSpan(
@@ -453,7 +452,7 @@ export class FileSystemDriver extends NativeBaseDriver {
           );
         }
 
-        await fse.writeFile(invalidationIdentifiersPath, encode(invalidationIdentifiers, { extensionCodec }));
+        await bunWrite(invalidationIdentifiersPath, encode(invalidationIdentifiers));
         await invalidationIdentifiersRelease();
         span.end();
       },
@@ -483,23 +482,25 @@ export class FileSystemDriver extends NativeBaseDriver {
 
       for (const policy of Object.keys(this._policies)) {
         const policyPath = this._getCachePath(policy as Policy);
-        const entries = await fse.readdir(policyPath);
+        const entries = (await fse.readdir(policyPath)).filter((file) => {
+          const ignoredFiles = ['ttl.dat', 'invalidation-identifiers.dat'];
+          return !ignoredFiles.includes(file);
+        });
 
         // We don't know if someone added additional subdirectories to the directory
         // so we check it here just to be sure
-        const files = await Promise.all(
+        const areFiles = await Promise.all(
           entries.map(async (entry) => {
             const stats = await fse.stat(path.join(policyPath, entry));
             return stats.isFile();
           }),
         );
 
-        const { free, size } = await checkDiskSpace(policyPath);
-        const total = size - free;
+        const total = await getDirectorySize(policyPath);
         resourceUsage[policy as Policy] = {
           total,
-          relative: (total * 100) / this._config.maxSize,
-          count: files.filter((isFile) => isFile).length,
+          relative: parseFloat(((total * 100) / this._config.maxSize).toFixed(6)),
+          count: areFiles.filter((isFile) => isFile).length,
         };
       }
 
@@ -509,8 +510,7 @@ export class FileSystemDriver extends NativeBaseDriver {
   }
 
   protected async _getCurrentCacheSize(): Promise<number> {
-    const { free, size } = await checkDiskSpace(path.resolve(this._config.mountPath));
-    return size - free;
+    return getDirectorySize(path.resolve(this._config.mountPath));
   }
 
   protected async _ensureCacheSizeLimit(policy: Policy, cache: Cache): Promise<void> {
@@ -528,7 +528,7 @@ export class FileSystemDriver extends NativeBaseDriver {
 
         // If the cache is bigger in size that the total available memory, there is no way for us
         // to ever store it, so we just give up
-        const cacheSize = Buffer.byteLength(encode(cache, { extensionCodec }));
+        const cacheSize = Buffer.byteLength(encode(cache));
         if (cacheSize > this._config.maxSize)
           throw new ApiError({ message: 'Cache too big', detail: 'Cache size exceeds maximum', status: 409 });
 
@@ -545,14 +545,14 @@ export class FileSystemDriver extends NativeBaseDriver {
           let hash: string | null = null;
 
           const invalidationIdentifiersPath = this._getInvalidationIdentifierPath(policy);
+          const invalidationIdentifiersFile = bunFile(invalidationIdentifiersPath);
+
           const releaseInvalidationIdentifiers = await lockfile.lock(invalidationIdentifiersPath);
-          const encodedInvalidationIdentifiers = await fse.readFile(invalidationIdentifiersPath);
+          const encodedInvalidationIdentifiers = await invalidationIdentifiersFile.bytes();
           const invalidationIdentifiers =
             encodedInvalidationIdentifiers.length === 0
               ? new Map<string, Set<string>>()
-              : (decode(encodedInvalidationIdentifiers, {
-                  extensionCodec,
-                }) as Map<string, Set<string>>);
+              : (decode(encodedInvalidationIdentifiers) as Map<string, Set<string>>);
 
           // Try to evict as many caches as necessary to make room for the new cache
           while (currentCacheSize > currentMaxSize) {
@@ -562,15 +562,16 @@ export class FileSystemDriver extends NativeBaseDriver {
             else {
               this._logger.verbose(`Evicting cache ${hash} from policy ${policy}`);
               const cachePath = this._getCachePath(policy, hash);
+              const cacheFile = bunFile(cachePath);
 
               const release = await lockfile.lock(cachePath);
-              const encodedCache = await fse.readFile(cachePath);
+              const encodedCache = await cacheFile.bytes();
               if (encodedCache.length === 0) {
                 this._logger.warn(`No cache with hash ${hash} found, skipping eviction`);
                 continue;
               }
 
-              const decodedCache = decode(encodedCache, { extensionCodec }) as Cache;
+              const decodedCache = decode(encodedCache) as Cache;
               await fse.remove(cachePath);
               await release();
 
@@ -600,7 +601,7 @@ export class FileSystemDriver extends NativeBaseDriver {
             }
           }
 
-          await fse.writeFile(invalidationIdentifiersPath, encode(invalidationIdentifiers, { extensionCodec }));
+          await bunWrite(invalidationIdentifiersPath, encode(invalidationIdentifiers));
           await releaseInvalidationIdentifiers();
 
           return hash;
@@ -628,14 +629,14 @@ export class FileSystemDriver extends NativeBaseDriver {
             let hash: string | null = null;
 
             const invalidationIdentifiersPath = this._getInvalidationIdentifierPath(remainingPolicy as Policy);
+            const invalidationIdentifiersFile = bunFile(invalidationIdentifiersPath);
+
             const releaseInvalidationIdentifiers = await lockfile.lock(invalidationIdentifiersPath);
-            const encodedInvalidationIdentifiers = await fse.readFile(invalidationIdentifiersPath);
+            const encodedInvalidationIdentifiers = await invalidationIdentifiersFile.bytes();
             const invalidationIdentifiers =
               encodedInvalidationIdentifiers.length === 0
                 ? new Map<string, Set<string>>()
-                : (decode(encodedInvalidationIdentifiers, {
-                    extensionCodec,
-                  }) as Map<string, Set<string>>);
+                : (decode(encodedInvalidationIdentifiers) as Map<string, Set<string>>);
 
             while (currentCacheSize > currentMaxSize) {
               hash = this._policies[remainingPolicy as Policy].evict();
@@ -644,15 +645,16 @@ export class FileSystemDriver extends NativeBaseDriver {
               else {
                 this._logger.verbose(`Evicting cache ${hash} from policy ${remainingPolicies}`);
                 const cachePath = this._getCachePath(remainingPolicy as Policy, hash);
+                const cacheFile = bunFile(cachePath);
 
                 const release = await lockfile.lock(cachePath);
-                const encodedCache = await fse.readFile(cachePath);
+                const encodedCache = await cacheFile.bytes();
                 if (encodedCache.length === 0) {
                   this._logger.warn(`No cache with hash ${hash} found, skipping eviction`);
                   continue;
                 }
 
-                const decodedCache = decode(encodedCache, { extensionCodec }) as Cache;
+                const decodedCache = decode(encodedCache) as Cache;
                 await fse.remove(cachePath);
                 await release();
 
@@ -682,7 +684,7 @@ export class FileSystemDriver extends NativeBaseDriver {
               }
             }
 
-            await fse.writeFile(invalidationIdentifiersPath, encode(invalidationIdentifiers, { extensionCodec }));
+            await bunWrite(invalidationIdentifiersPath, encode(invalidationIdentifiers));
             await releaseInvalidationIdentifiers();
 
             return hash;
@@ -741,15 +743,15 @@ export class FileSystemDriver extends NativeBaseDriver {
 
   private async _removeTTLHash(hash: string, policy: Policy): Promise<void> {
     const ttlFilePath = this._ttlFilePath(policy as Policy);
+    const ttlFile = bunFile(ttlFilePath);
+
     const ttlRelease = await lockfile.lock(ttlFilePath);
-    const encodedTtlMap = await fse.readFile(ttlFilePath);
+    const encodedTtlMap = await ttlFile.bytes();
     const ttlMap =
-      encodedTtlMap.length === 0
-        ? new Map<string, number>()
-        : (decode(encodedTtlMap, { extensionCodec }) as Map<string, number>);
+      encodedTtlMap.length === 0 ? new Map<string, number>() : (decode(encodedTtlMap) as Map<string, number>);
 
     ttlMap.delete(hash);
-    await fse.writeFile(ttlFilePath, encode(ttlMap, { extensionCodec }));
+    await bunWrite(ttlFilePath, encode(ttlMap));
     await ttlRelease();
   }
 }

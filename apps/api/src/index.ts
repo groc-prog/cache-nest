@@ -1,15 +1,15 @@
-import type { Subprocess } from 'bun';
+import { spawn, type Subprocess } from 'bun';
 import path from 'path';
 
 import { getApiConfiguration } from '@/setup/configuration';
 
-const { server } = await getApiConfiguration(true);
+const { server } = await getApiConfiguration();
 
 const clusterCount = server.clustering.enabled ? server.clustering.clusters : 1;
 const clusters: Subprocess[] = new Array(clusterCount);
 
 for (let i = 0; i < clusterCount; i++) {
-  clusters[i] = Bun.spawn({
+  clusters[i] = spawn({
     cmd: ['bun', path.join(import.meta.dir, 'server.ts')],
     stdin: 'inherit',
     stdout: 'inherit',
