@@ -26,7 +26,7 @@ import {
   sizeLimitEvictionsCounter,
   totalEvictionsCounter,
   tracer,
-} from '@/setup/opentelemetry-setup';
+} from '@/setup/opentelemetry';
 import type { CreateCache } from '@/types/cache';
 import { ApiError } from '@/utils/errors';
 import { extensionCodec } from '@/utils/msgpack';

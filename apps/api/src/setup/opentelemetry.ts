@@ -22,7 +22,7 @@ import os from 'os';
 
 import { OpenTelemetryExporter } from '@cache-nest/types';
 
-import { getApiConfiguration } from '@/setup/configuration-setup';
+import { getApiConfiguration } from '@/setup/configuration';
 
 const SERVICE_NAME = 'cache-nest';
 

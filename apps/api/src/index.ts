@@ -1,7 +1,7 @@
 import type { Subprocess } from 'bun';
 import path from 'path';
 
-import { getApiConfiguration } from '@/setup/configuration-setup';
+import { getApiConfiguration } from '@/setup/configuration';
 
 const { server } = await getApiConfiguration(true);
 

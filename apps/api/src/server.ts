@@ -10,7 +10,7 @@ import { merge } from 'lodash-es';
 import { Driver } from '@cache-nest/types';
 
 import { type BaseDriver, FileSystemDriver, MemoryDriver } from '@/drivers';
-import { getApiConfiguration } from '@/setup/configuration-setup';
+import { getApiConfiguration } from '@/setup/configuration';
 import { ApiError } from '@/utils/errors';
 import globalLogger from '@/utils/logger';
 

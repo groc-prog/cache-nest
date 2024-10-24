@@ -5,7 +5,7 @@ import type { Logger } from 'winston';
 
 import type { Driver, Policy, Identifier, Cache } from '@cache-nest/types';
 
-import { createdCachesCounter, totalEvictionsCounter, tracer, ttlEvictionsCounter } from '@/setup/opentelemetry-setup';
+import { createdCachesCounter, totalEvictionsCounter, tracer, ttlEvictionsCounter } from '@/setup/opentelemetry';
 import type { CreateCache } from '@/types/cache';
 import logger from '@/utils/logger';
 

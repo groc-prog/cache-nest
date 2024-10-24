@@ -1,7 +1,7 @@
 import { Driver, Policy } from '@cache-nest/types';
 
 import { BasePolicy } from '@/policies';
-import { tracer } from '@/setup/opentelemetry-setup';
+import { tracer } from '@/setup/opentelemetry';
 import { LinkedList } from '@/utils/linked-list';
 
 interface LRUSnapshot {

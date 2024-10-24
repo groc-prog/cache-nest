@@ -1,5 +1,5 @@
 import type { App } from '@/server';
-import { tracer } from '@/setup/opentelemetry-setup';
+import { tracer } from '@/setup/opentelemetry';
 import { ApiError } from '@/utils/errors';
 
 /**
