@@ -259,7 +259,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
       logger.verbose(`Found file ${configFilePath}`);
 
       switch (file.type) {
-        case 'application/x-yaml':
+        case 'text/yaml':
           logger.debug('Reading YAML configuration file');
           apiConfig = merge({}, apiConfig, jsYaml.load(await file.text()));
           break;
@@ -268,9 +268,7 @@ export async function getApiConfiguration(): Promise<ApiConfiguration> {
           apiConfig = merge({}, apiConfig, await file.json());
           break;
         default:
-          logger.warn(
-            `Found unsupported file ${file.type}. The supported types are application/x-yaml or application/json.`,
-          );
+          logger.warn(`Found unsupported file ${file.type}. The supported types are text/yaml or application/json.`);
           break;
       }
     }

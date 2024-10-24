@@ -1,7 +1,7 @@
 import { Mutex } from 'async-mutex';
 import { file as bunFile, write as bunWrite } from 'bun';
 import fse from 'fs-extra';
-import { capitalize, lowerCase, merge } from 'lodash-es';
+import { capitalize, lowerCase, merge, upperCase } from 'lodash-es';
 import path from 'path';
 import lockfile from 'proper-lockfile';
 
@@ -73,8 +73,8 @@ export class FileSystemDriver extends NativeBaseDriver {
           for (const policy in this._policies) {
             const ttlFilePath = this._ttlFilePath(policy as Policy);
 
-            await bunWrite(this._getInvalidationIdentifierPath(policy as Policy), '');
-            await bunWrite(ttlFilePath, '');
+            await fse.ensureFile(this._getInvalidationIdentifierPath(policy as Policy));
+            await fse.ensureFile(ttlFilePath);
 
             await tracer.startActiveSpan(
               'RecoverTTLTimers',
@@ -481,27 +481,35 @@ export class FileSystemDriver extends NativeBaseDriver {
       );
 
       for (const policy of Object.keys(this._policies)) {
-        const policyPath = this._getCachePath(policy as Policy);
-        const entries = (await fse.readdir(policyPath)).filter((file) => {
-          const ignoredFiles = ['ttl.dat', 'invalidation-identifiers.dat'];
-          return !ignoredFiles.includes(file);
-        });
+        await tracer.startActiveSpan(
+          `ResourceUsage${upperCase(policy)}`,
+          { attributes: { 'cache.driver': this.driver, 'cache.policy': policy } },
+          async (policySpan) => {
+            const policyPath = this._getCachePath(policy as Policy);
+            const entries = (await fse.readdir(policyPath)).filter((file) => {
+              const ignoredFiles = ['ttl.dat', 'invalidation-identifiers.dat'];
+              return !ignoredFiles.includes(file);
+            });
 
-        // We don't know if someone added additional subdirectories to the directory
-        // so we check it here just to be sure
-        const areFiles = await Promise.all(
-          entries.map(async (entry) => {
-            const stats = await fse.stat(path.join(policyPath, entry));
-            return stats.isFile();
-          }),
+            // We don't know if someone added additional subdirectories to the directory
+            // so we check it here just to be sure
+            const areFiles = await Promise.all(
+              entries.map(async (entry) => {
+                const stats = await fse.stat(path.join(policyPath, entry));
+                return stats.isFile();
+              }),
+            );
+
+            // Adjust for the default size of the ttl.dat file
+            const total = (await getDirectorySize(policyPath)) - 3;
+            resourceUsage[policy as Policy] = {
+              total,
+              relative: parseFloat(((total * 100) / this._config.maxSize).toFixed(6)),
+              count: areFiles.filter((isFile) => isFile).length,
+            };
+            policySpan.end();
+          },
         );
-
-        const total = await getDirectorySize(policyPath);
-        resourceUsage[policy as Policy] = {
-          total,
-          relative: parseFloat(((total * 100) / this._config.maxSize).toFixed(6)),
-          count: areFiles.filter((isFile) => isFile).length,
-        };
       }
 
       span.end();
